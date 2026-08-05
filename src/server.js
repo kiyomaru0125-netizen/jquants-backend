@@ -41,7 +41,7 @@ const REQUEST_INTERVAL_MS = 1200;
 async function getLatestClose(code) {
   const cached = priceCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS) {
-    return cached.price;
+    return cached.value; // { price, date }
   }
 
   // Lightプラン以上では当日分のデータが取得できるため、直近10営業日分の範囲で取得する
@@ -57,9 +57,11 @@ async function getLatestClose(code) {
   const quotes = data.data ?? [];
   const latest = quotes[quotes.length - 1];
   const price = latest ? Number(latest.C ?? latest.Close) : null;
+  const date = latest ? (latest.Date ?? latest.D ?? null) : null;
 
-  priceCache.set(code, { price, fetchedAt: Date.now() });
-  return price;
+  const value = { price, date };
+  priceCache.set(code, { value, fetchedAt: Date.now() });
+  return value;
 }
 
 /**
@@ -78,13 +80,21 @@ async function refreshFundamentalsInBackground() {
       await sleep(REQUEST_INTERVAL_MS);
       const statementsRes = await jquants.fetchStatements(code);
       await sleep(REQUEST_INTERVAL_MS);
-      const latestClose = await getLatestClose(code);
+      const latestCloseInfo = await getLatestClose(code);
       await sleep(REQUEST_INTERVAL_MS);
 
       const listedInfo = listedInfoRes.data?.[0] ?? null;
       const statements = statementsRes.data ?? [];
 
-      results.push(mapToStockShape({ code, listedInfo, statements, latestClose }));
+      results.push(
+        mapToStockShape({
+          code,
+          listedInfo,
+          statements,
+          latestClose: latestCloseInfo?.price ?? null,
+          priceDate: latestCloseInfo?.date ?? null,
+        })
+      );
     } catch (err) {
       console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
       // 1銘柄の失敗で全体を止めない。失敗した銘柄は前回キャッシュの値を使うか、スキップする。
@@ -121,7 +131,7 @@ app.get('/api/eps-history/:code', async (req, res) => {
   try {
     const { code } = req.params;
     const statementsRes = await jquants.fetchStatements(code);
-    const history = mapToEpsHistory(statementsRes.data ?? [], 10);
+    const history = mapToEpsHistory(statementsRes.data ?? [], 5);
     res.json(history);
   } catch (err) {
     console.error(err);
@@ -131,13 +141,13 @@ app.get('/api/eps-history/:code', async (req, res) => {
 
 /**
  * GET /api/price/:code
- * 単一銘柄の直近終値だけを素早く取得したい場合用。
+ * 単一銘柄の直近終値と、それが何営業日分のデータかを返す。
  */
 app.get('/api/price/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const price = await getLatestClose(code);
-    res.json({ code, price });
+    const { price, date } = await getLatestClose(code);
+    res.json({ code, price, date });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

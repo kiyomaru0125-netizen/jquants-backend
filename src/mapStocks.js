@@ -32,10 +32,10 @@ function estimateDividendFreq(latestAnnual) {
 }
 
 /**
- * 1銘柄分の { listedInfo, statements, latestClose } を
+ * 1銘柄分の { listedInfo, statements, latestClose, priceDate } を
  * ダッシュボード表示用の1オブジェクトに変換する。
  */
-export function mapToStockShape({ code, listedInfo, statements, latestClose }) {
+export function mapToStockShape({ code, listedInfo, statements, latestClose, priceDate }) {
   const annual = extractAnnualStatements(statements);
   const latestAnnual = annual[0] ?? null;
 
@@ -62,6 +62,7 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose }) {
     name,
     industry,
     price: price ?? 0,
+    priceDate: priceDate ?? null,
     eps: eps ?? 0,
     bps: bps ?? 0,
     yieldPct: yieldPct ?? 0,
