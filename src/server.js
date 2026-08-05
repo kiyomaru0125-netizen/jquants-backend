@@ -32,9 +32,13 @@ async function getLatestClose(code) {
     return cached.price;
   }
 
-  // 直近5営業日分を取得して一番新しい終値を使う（休日・データ未確定日の穴埋め）
-  const to = new Date().toISOString().slice(0, 10);
-  const fromDate = new Date();
+  // 無料プランはデータが約12週間(84日)遅延して配信されるため、
+  // 「今日」を上限にすると必ず400エラーになる。安全マージンを取って91日前を上限にする。
+  const toDate = new Date();
+  toDate.setDate(toDate.getDate() - 91);
+  const to = toDate.toISOString().slice(0, 10);
+
+  const fromDate = new Date(toDate);
   fromDate.setDate(fromDate.getDate() - 10);
   const from = fromDate.toISOString().slice(0, 10);
 
