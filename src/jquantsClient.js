@@ -42,6 +42,25 @@ export function fetchListedInfo(code) {
   return jquantsGet('/equities/master', { code: toJQuantsCode(code) });
 }
 
+/**
+ * コード・日付を指定せず全銘柄分の一覧を取得する（ページネーションあり）。
+ * 東証上場の全銘柄（約4,000銘柄）が対象になるため、pagination_keyを使って
+ * 複数回に分けてすべて取得する。
+ */
+export async function fetchAllListedStocks() {
+  const all = [];
+  let paginationKey;
+
+  do {
+    const res = await jquantsGet('/equities/master', paginationKey ? { pagination_key: paginationKey } : {});
+    const page = res.data ?? [];
+    all.push(...page);
+    paginationKey = res.pagination_key;
+  } while (paginationKey);
+
+  return all;
+}
+
 /** 日次の株価四本値（直近の終値取得に使用）。V1の /prices/daily_quotes に相当 */
 export function fetchDailyQuotes(code, { from, to } = {}) {
   return jquantsGet('/equities/bars/daily', { code: toJQuantsCode(code), from, to });
@@ -54,6 +73,7 @@ export function fetchStatements(code) {
 
 export default {
   fetchListedInfo,
+  fetchAllListedStocks,
   fetchDailyQuotes,
   fetchStatements,
 };

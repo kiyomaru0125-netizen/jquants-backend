@@ -32,6 +32,29 @@ function estimateDividendFreq(latestAnnual) {
 }
 
 /**
+ * J-Quants API V2は5桁の証券コードを使用する（例: 72030）。
+ * ダッシュボード側は4桁で扱うため、末尾の0を取り除いて変換する。
+ * （優先株式など元々5桁で意味を持つコードは、稀に取りこぼす可能性がある簡易変換）
+ */
+function toDisplayCode(jquantsCode) {
+  if (!jquantsCode) return jquantsCode;
+  return jquantsCode.length === 5 && jquantsCode.endsWith('0') ? jquantsCode.slice(0, 4) : jquantsCode;
+}
+
+/**
+ * 全銘柄一覧(/equities/master、コード未指定)の1レコードを、
+ * 検索・一覧表示用の軽量な形 { code, name, industry } に変換する。
+ * 株価やPER/PBR/EPSは含まない（必要になった時点で個別に取得する）。
+ */
+export function mapToListedStockShape(record) {
+  return {
+    code: toDisplayCode(record.Code),
+    name: record.CoName ?? record.CompanyName ?? record.Name ?? record.Code,
+    industry: record.S33Nm ?? record.Sector33CodeName ?? record.Sector33Name ?? '不明',
+  };
+}
+
+/**
  * 1銘柄分の { listedInfo, statements, latestClose, priceDate } を
  * ダッシュボード表示用の1オブジェクトに変換する。
  */
