@@ -53,9 +53,9 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose }) {
 
   // listedInfo側のフィールド名は未確定要素があるため、複数の候補名を試す
   const name =
-    listedInfo?.CompanyName ?? listedInfo?.Name ?? listedInfo?.CoName ?? code;
+    listedInfo?.CoName ?? listedInfo?.CompanyName ?? listedInfo?.Name ?? code;
   const industry =
-    listedInfo?.Sector33CodeName ?? listedInfo?.Sector33Name ?? listedInfo?.Sec33Name ?? '不明';
+    listedInfo?.S33Nm ?? listedInfo?.Sector33CodeName ?? listedInfo?.Sector33Name ?? '不明';
 
   return {
     code,
