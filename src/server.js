@@ -26,16 +26,27 @@ const WATCHED_CODES = [
 const priceCache = new Map(); // code -> { price, fetchedAt }
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000; // 5分
 
+// 全銘柄分のファンダメンタルズは、HTTPリクエストの応答とは切り離してバックグラウンドで
+// 準備しておく（35銘柄 × レート制限対策の待機時間があるため、リクエスト内で
+// 同期的に処理するとタイムアウトの原因になる）。
+let fundamentalsCache = { data: [], updatedAt: 0 };
+const FUNDAMENTALS_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得
+let isRefreshingFundamentals = false;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// 銘柄1件ごとの待機時間。無料プランのレート制限（1分あたりのリクエスト数上限）に
+// 引っかからないよう、余裕を持たせた間隔にしている。429が出る場合はこの値を増やす。
+const REQUEST_INTERVAL_MS = 1200;
+
 async function getLatestClose(code) {
   const cached = priceCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS) {
     return cached.price;
   }
 
-  // 無料プランはデータが約12週間(84日)遅延して配信されるため、
-  // 「今日」を上限にすると必ず400エラーになる。安全マージンを取って91日前を上限にする。
+  // Lightプラン以上では当日分のデータが取得できるため、直近10営業日分の範囲で取得する
+  // （Freeプランの12週間遅延制限があった場合は、toを91日前などに戻す必要がある）
   const toDate = new Date();
-  toDate.setDate(toDate.getDate() - 91);
   const to = toDate.toISOString().slice(0, 10);
 
   const fromDate = new Date(toDate);
@@ -52,31 +63,53 @@ async function getLatestClose(code) {
 }
 
 /**
+ * 全銘柄分のファンダメンタルズをバックグラウンドで取得し、fundamentalsCacheを更新する。
+ * レート制限を避けるため、銘柄ごと・APIごとに間隔を空けて順番に取得する。
+ * HTTPリクエストとは無関係に動くので、多少時間がかかってもタイムアウトの心配はない。
+ */
+async function refreshFundamentalsInBackground() {
+  if (isRefreshingFundamentals) return;
+  isRefreshingFundamentals = true;
+
+  const results = [];
+  for (const code of WATCHED_CODES) {
+    try {
+      const listedInfoRes = await jquants.fetchListedInfo(code);
+      await sleep(REQUEST_INTERVAL_MS);
+      const statementsRes = await jquants.fetchStatements(code);
+      await sleep(REQUEST_INTERVAL_MS);
+      const latestClose = await getLatestClose(code);
+      await sleep(REQUEST_INTERVAL_MS);
+
+      const listedInfo = listedInfoRes.data?.[0] ?? null;
+      const statements = statementsRes.data ?? [];
+
+      results.push(mapToStockShape({ code, listedInfo, statements, latestClose }));
+    } catch (err) {
+      console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
+      // 1銘柄の失敗で全体を止めない。失敗した銘柄は前回キャッシュの値を使うか、スキップする。
+    }
+  }
+
+  if (results.length > 0) {
+    fundamentalsCache = { data: results, updatedAt: Date.now() };
+    console.log(`fundamentals更新完了: ${results.length}件 (${new Date().toLocaleString('ja-JP')})`);
+  }
+  isRefreshingFundamentals = false;
+}
+
+/**
  * GET /api/fundamentals
  * ダッシュボードのMASTER_STOCKSを丸ごと置き換えるためのエンドポイント。
- * 全銘柄分の { listedInfo + statements + 直近終値 } を集めて返す。
+ * 常にキャッシュ済みのデータを即座に返す（まだ何も取得できていない起動直後は空配列を返す）。
+ * フロントエンド側は空配列の場合デモデータにフォールバックする作りになっている。
  */
-app.get('/api/fundamentals', async (req, res) => {
-  try {
-    const results = await Promise.all(
-      WATCHED_CODES.map(async (code) => {
-        const [listedInfoRes, statementsRes, latestClose] = await Promise.all([
-          jquants.fetchListedInfo(code),
-          jquants.fetchStatements(code),
-          getLatestClose(code),
-        ]);
+app.get('/api/fundamentals', (req, res) => {
+  res.json(fundamentalsCache.data);
 
-        const listedInfo = listedInfoRes.data?.[0] ?? null;
-        const statements = statementsRes.data ?? [];
-
-        return mapToStockShape({ code, listedInfo, statements, latestClose });
-      })
-    );
-
-    res.json(results);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  // キャッシュが古い（または空の）場合は、レスポンスを返した後にバックグラウンドで更新をキック
+  if (Date.now() - fundamentalsCache.updatedAt > FUNDAMENTALS_REFRESH_INTERVAL_MS) {
+    refreshFundamentalsInBackground();
   }
 });
 
@@ -115,4 +148,6 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.listen(PORT, () => {
   console.log(`J-Quantsバックエンド起動: http://localhost:${PORT}`);
+  // 起動直後にバックグラウンドでファンダメンタルズの初回取得を開始する
+  refreshFundamentalsInBackground();
 });
