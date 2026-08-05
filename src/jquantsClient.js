@@ -1,88 +1,25 @@
 import fetch from 'node-fetch';
 
-const BASE_URL = 'https://api.jquants.com/v1';
-
-// メモリ上にトークンをキャッシュする（本番ではRedis等の永続ストアに置き換え推奨）
-let cachedRefreshToken = null;
-let cachedIdToken = null;
-let idTokenExpiresAt = 0; // epoch ms
+// J-Quants API V2のベースURL(2025年12月のV2リリース以降、V1のトークン認証は廃止)
+const BASE_URL = 'https://api.jquants.com/v2';
 
 /**
- * メールアドレス・パスワードから refreshToken を取得する。
- * refreshToken は約1週間有効。
- */
-async function fetchRefreshToken(mailaddress, password) {
-  const res = await fetch(`${BASE_URL}/token/auth_user`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mailaddress, password }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`J-Quants refreshToken取得に失敗: ${res.status} ${text}`);
-  }
-  const data = await res.json();
-  return data.refreshToken;
-}
-
-/**
- * refreshToken から idToken を取得する。
- * idToken は約24時間有効で、実際のデータ取得APIのBearerトークンとして使う。
- */
-async function fetchIdToken(refreshToken) {
-  const res = await fetch(`${BASE_URL}/token/auth_refresh?refreshtoken=${refreshToken}`, {
-    method: 'POST',
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`J-Quants idToken取得に失敗: ${res.status} ${text}`);
-  }
-  const data = await res.json();
-  return data.idToken;
-}
-
-/**
- * 有効なidTokenを返す。キャッシュが切れていれば自動で再取得する。
- */
-async function getValidIdToken() {
-  const now = Date.now();
-
-  if (cachedIdToken && now < idTokenExpiresAt) {
-    return cachedIdToken;
-  }
-
-  const { JQUANTS_MAIL, JQUANTS_PASSWORD } = process.env;
-  if (!JQUANTS_MAIL || !JQUANTS_PASSWORD) {
-    throw new Error('環境変数 JQUANTS_MAIL / JQUANTS_PASSWORD が設定されていません（.envを確認してください）');
-  }
-
-  if (!cachedRefreshToken) {
-    cachedRefreshToken = await fetchRefreshToken(JQUANTS_MAIL, JQUANTS_PASSWORD);
-  }
-
-  try {
-    cachedIdToken = await fetchIdToken(cachedRefreshToken);
-  } catch (err) {
-    // refreshTokenも切れている可能性があるので、1回だけ取り直してリトライ
-    cachedRefreshToken = await fetchRefreshToken(JQUANTS_MAIL, JQUANTS_PASSWORD);
-    cachedIdToken = await fetchIdToken(cachedRefreshToken);
-  }
-
-  // 安全マージンを取って23時間で失効扱いにする
-  idTokenExpiresAt = now + 23 * 60 * 60 * 1000;
-  return cachedIdToken;
-}
-
-/**
- * J-Quants APIへの共通GETリクエスト
+ * V2 APIへの共通GETリクエスト。
+ * 認証は x-api-key ヘッダーにAPIキーを付与するだけ（トークン取得・更新は不要）。
  */
 async function jquantsGet(path, params = {}) {
-  const idToken = await getValidIdToken();
-  const query = new URLSearchParams(params).toString();
+  const apiKey = process.env.JQUANTS_API_KEY;
+  if (!apiKey) {
+    throw new Error('環境変数 JQUANTS_API_KEY が設定されていません（.envを確認してください）');
+  }
+
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null))
+  ).toString();
   const url = `${BASE_URL}${path}${query ? `?${query}` : ''}`;
 
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${idToken}` },
+    headers: { 'x-api-key': apiKey },
   });
 
   if (!res.ok) {
@@ -92,19 +29,27 @@ async function jquantsGet(path, params = {}) {
   return res.json();
 }
 
-/** 銘柄の基本情報（会社名・33業種区分など） */
+/**
+ * J-Quants API V2は5桁の証券コードを使用する（例: 7203 → 72030）。
+ * ダッシュボード側は従来通り4桁で扱い、APIを叩く直前だけ5桁に変換する。
+ */
+function toJQuantsCode(code) {
+  return code.length === 4 ? `${code}0` : code;
+}
+
+/** 銘柄の基本情報（会社名・業種区分など）。V1の /listed/info に相当 */
 export function fetchListedInfo(code) {
-  return jquantsGet('/listed/info', { code });
+  return jquantsGet('/equities/master', { code: toJQuantsCode(code) });
 }
 
-/** 日次の株価四本値（直近の終値取得に使用） */
+/** 日次の株価四本値（直近の終値取得に使用）。V1の /prices/daily_quotes に相当 */
 export function fetchDailyQuotes(code, { from, to } = {}) {
-  return jquantsGet('/prices/daily_quotes', { code, from, to });
+  return jquantsGet('/equities/bars/daily', { code: toJQuantsCode(code), from, to });
 }
 
-/** 財務情報（EPS・BPS・配当金等が含まれる決算情報） */
+/** 財務情報サマリー（EPS・BPS・配当金等）。V1の /fins/statements に相当 */
 export function fetchStatements(code) {
-  return jquantsGet('/fins/statements', { code });
+  return jquantsGet('/fins/summary', { code: toJQuantsCode(code) });
 }
 
 export default {

@@ -39,9 +39,9 @@ async function getLatestClose(code) {
   const from = fromDate.toISOString().slice(0, 10);
 
   const data = await jquants.fetchDailyQuotes(code, { from, to });
-  const quotes = data.daily_quotes ?? [];
+  const quotes = data.data ?? [];
   const latest = quotes[quotes.length - 1];
-  const price = latest ? Number(latest.Close) : null;
+  const price = latest ? Number(latest.C ?? latest.Close) : null;
 
   priceCache.set(code, { price, fetchedAt: Date.now() });
   return price;
@@ -62,8 +62,8 @@ app.get('/api/fundamentals', async (req, res) => {
           getLatestClose(code),
         ]);
 
-        const listedInfo = listedInfoRes.info?.[0] ?? null;
-        const statements = statementsRes.statements ?? [];
+        const listedInfo = listedInfoRes.data?.[0] ?? null;
+        const statements = statementsRes.data ?? [];
 
         return mapToStockShape({ code, listedInfo, statements, latestClose });
       })
@@ -84,7 +84,7 @@ app.get('/api/eps-history/:code', async (req, res) => {
   try {
     const { code } = req.params;
     const statementsRes = await jquants.fetchStatements(code);
-    const history = mapToEpsHistory(statementsRes.statements ?? [], 10);
+    const history = mapToEpsHistory(statementsRes.data ?? [], 10);
     res.json(history);
   } catch (err) {
     console.error(err);
