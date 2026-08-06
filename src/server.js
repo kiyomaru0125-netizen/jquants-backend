@@ -244,19 +244,16 @@ app.get('/api/listed-stocks', (req, res) => {
 app.get('/api/stock/:code', async (req, res) => {
   try {
     const { code } = req.params;
+    // 企業名・業種はフロントエンドがすでに全銘柄一覧(/api/listed-stocks)から
+    // 知っているため、クエリパラメータで受け取って再取得を省略する（問い合わせ回数を減らすため）
+    const { name: knownName, industry: knownIndustry } = req.query;
 
-    // 3つ同時ではなく、少し間隔を空けて順番に取得することでレート制限のバーストを避ける
-    const listedInfoRes = await jquants.fetchListedInfo(code);
-    await sleep(300);
     const statements = await getCachedStatements(code);
-    await sleep(300);
     const latestCloseInfo = await getLatestClose(code);
-
-    const listedInfo = listedInfoRes.data?.[0] ?? null;
 
     const stock = mapToStockShape({
       code,
-      listedInfo,
+      listedInfo: knownName ? { CoName: knownName, S33Nm: knownIndustry } : null,
       statements,
       latestClose: latestCloseInfo?.price ?? null,
       priceDate: latestCloseInfo?.date ?? null,
