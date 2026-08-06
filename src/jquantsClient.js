@@ -5,12 +5,34 @@ const BASE_URL = 'https://api.jquants.com/v2';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// --- グローバルなリクエスト間隔制御 ---
+// 検索結果の複数銘柄が同時に問い合わせてきても、実際にJ-Quantsへ飛ぶリクエストは
+// アプリ全体でこの1本のキューを通じて必ず直列化・間隔調整される。
+// (個々のエンドポイント側で独自にsleepを入れるだけだと、複数リクエストが重なった時に
+//  合計のペースが上限を超えてしまうため、ここで一元管理する)
+const MIN_INTERVAL_MS = 1100; // Lightプラン(60回/分)に対して安全マージンを取った間隔
+let queue = Promise.resolve();
+let lastCallAt = 0;
+
+function scheduleThrottled(fn) {
+  const result = queue.then(async () => {
+    const wait = Math.max(0, lastCallAt + MIN_INTERVAL_MS - Date.now());
+    if (wait > 0) await sleep(wait);
+    lastCallAt = Date.now();
+    return fn();
+  });
+  // 1件が失敗してもキュー自体は途切れさせない
+  queue = result.catch(() => {});
+  return result;
+}
+
 /**
  * V2 APIへの共通GETリクエスト。
  * 認証は x-api-key ヘッダーにAPIキーを付与するだけ（トークン取得・更新は不要）。
- * レート制限(429)に当たった場合は、少し待って自動的に再試行する。
+ * 実際のHTTPリクエストは上記のグローバルキュー経由で直列化され、
+ * レート制限(429)に当たった場合は少し待って自動的に再試行する。
  */
-async function jquantsGet(path, params = {}, retriesLeft = 2) {
+async function jquantsGet(path, params = {}, retriesLeft = 3) {
   const apiKey = process.env.JQUANTS_API_KEY;
   if (!apiKey) {
     throw new Error('環境変数 JQUANTS_API_KEY が設定されていません（.envを確認してください）');
@@ -21,13 +43,11 @@ async function jquantsGet(path, params = {}, retriesLeft = 2) {
   ).toString();
   const url = `${BASE_URL}${path}${query ? `?${query}` : ''}`;
 
-  const res = await fetch(url, {
-    headers: { 'x-api-key': apiKey },
-  });
+  const res = await scheduleThrottled(() => fetch(url, { headers: { 'x-api-key': apiKey } }));
 
   if (res.status === 429 && retriesLeft > 0) {
-    // レート制限。少し待ってから同じリクエストを再試行する
-    await sleep(1500);
+    // レート制限。少し長めに待ってから同じリクエストを再試行する
+    await sleep(3000);
     return jquantsGet(path, params, retriesLeft - 1);
   }
 
