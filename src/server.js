@@ -5,6 +5,11 @@ import jquants from './jquantsClient.js';
 import { mapToStockShape, mapToEpsHistory, mapToListedStockShape } from './mapStocks.js';
 
 const app = express();
+app.set('etag', false); // ブラウザが古いレスポンスを304で使い回さないようにする
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 const PORT = process.env.PORT || 8787;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
