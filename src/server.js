@@ -239,11 +239,13 @@ app.get('/api/listed-stocks', (req, res) => {
 app.get('/api/stock/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const [listedInfoRes, statements, latestCloseInfo] = await Promise.all([
-      jquants.fetchListedInfo(code),
-      getCachedStatements(code),
-      getLatestClose(code),
-    ]);
+
+    // 3つ同時ではなく、少し間隔を空けて順番に取得することでレート制限のバーストを避ける
+    const listedInfoRes = await jquants.fetchListedInfo(code);
+    await sleep(300);
+    const statements = await getCachedStatements(code);
+    await sleep(300);
+    const latestCloseInfo = await getLatestClose(code);
 
     const listedInfo = listedInfoRes.data?.[0] ?? null;
 

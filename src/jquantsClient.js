@@ -3,11 +3,14 @@ import fetch from 'node-fetch';
 // J-Quants API V2のベースURL(2025年12月のV2リリース以降、V1のトークン認証は廃止)
 const BASE_URL = 'https://api.jquants.com/v2';
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * V2 APIへの共通GETリクエスト。
  * 認証は x-api-key ヘッダーにAPIキーを付与するだけ（トークン取得・更新は不要）。
+ * レート制限(429)に当たった場合は、少し待って自動的に再試行する。
  */
-async function jquantsGet(path, params = {}) {
+async function jquantsGet(path, params = {}, retriesLeft = 2) {
   const apiKey = process.env.JQUANTS_API_KEY;
   if (!apiKey) {
     throw new Error('環境変数 JQUANTS_API_KEY が設定されていません（.envを確認してください）');
@@ -21,6 +24,12 @@ async function jquantsGet(path, params = {}) {
   const res = await fetch(url, {
     headers: { 'x-api-key': apiKey },
   });
+
+  if (res.status === 429 && retriesLeft > 0) {
+    // レート制限。少し待ってから同じリクエストを再試行する
+    await sleep(1500);
+    return jquantsGet(path, params, retriesLeft - 1);
+  }
 
   if (!res.ok) {
     const text = await res.text();
