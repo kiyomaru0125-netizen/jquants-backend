@@ -21,6 +21,16 @@ function toNumber(value) {
 }
 
 /**
+ * statementsから直近の売上高だけを軽量に取り出す。
+ * 業界ごとの売上ランキングを作る際、mapToStockShapeをフルに呼ばずに済むようにするため。
+ */
+export function getLatestSales(statements) {
+  const annual = extractAnnualStatements(statements);
+  const latest = annual[0];
+  return latest ? toNumber(latest.Sales) : null;
+}
+
+/**
  * 年何回配当が実施されたかを、四半期ごとの配当実績フィールドの
  * 非ゼロ件数から推定する（簡易ヒューリスティック）。
  */
@@ -65,6 +75,7 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
   const eps = toNumber(latestAnnual?.EPS);
   const bps = toNumber(latestAnnual?.BPS);
   const dividendPerShare = toNumber(latestAnnual?.DivAnn) ?? toNumber(latestAnnual?.FDivAnn);
+  const sales = toNumber(latestAnnual?.Sales);
 
   const shOutFY = toNumber(latestAnnual?.ShOutFY);
   const trShFY = toNumber(latestAnnual?.TrShFY);
@@ -90,6 +101,8 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     bps: bps ?? 0,
     yieldPct: yieldPct ?? 0,
     dividendFreq: estimateDividendFreq(latestAnnual),
+    // 売上高(円)。並び替え用途のほか、表示にも使う
+    sales: sales ?? null,
     // J-Quantsは株数を「株」単位で返すため、ダッシュボード側の「百万株」単位に変換
     sharesOutstanding: sharesOutstandingRaw ? Math.round(sharesOutstandingRaw / 1_000_000) : null,
   };

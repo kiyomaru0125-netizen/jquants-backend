@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import jquants from './jquantsClient.js';
-import { mapToStockShape, mapToEpsHistory, mapToListedStockShape } from './mapStocks.js';
+import { mapToStockShape, mapToEpsHistory, mapToListedStockShape, getLatestSales } from './mapStocks.js';
 
 const app = express();
 app.set('etag', false); // ブラウザが古いレスポンスを304で使い回さないようにする
@@ -54,8 +54,9 @@ const WATCHED_CODES = [
 ];
 
 // 直近の株価キャッシュ（同時に何度もdaily_quotesを叩かないようにする簡易キャッシュ）
+// Lightプランは1日1回しか株価が更新されないため、TTLは24時間で十分
 const priceCache = new Map(); // code -> { price, fetchedAt }
-const PRICE_CACHE_TTL_MS = 5 * 60 * 1000; // 5分
+const PRICE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24時間
 
 // 全銘柄一覧（コード・企業名・業種のみの軽量データ）のキャッシュ。
 // 検索対象を東証全銘柄に広げるためのもので、株価やPER/PBR/EPSは含まない。
@@ -82,7 +83,7 @@ async function refreshListedStocksInBackground() {
 // 個別銘柄の財務情報（EPS/BPS/配当等）のキャッシュ。
 // オンデマンド取得（/api/stock/:code）で毎回叩かないようにするため。
 const statementsCache = new Map(); // code -> { statements, fetchedAt }
-const STATEMENTS_CACHE_TTL_MS = 60 * 60 * 1000; // 1時間
+const STATEMENTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24時間(決算情報は頻繁には変わらないため)
 
 async function getCachedStatements(code) {
   const cached = statementsCache.get(code);
@@ -99,13 +100,8 @@ async function getCachedStatements(code) {
 // 準備しておく（35銘柄 × レート制限対策の待機時間があるため、リクエスト内で
 // 同期的に処理するとタイムアウトの原因になる）。
 let fundamentalsCache = { data: [], updatedAt: 0 };
-const FUNDAMENTALS_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得
-let isRefreshingFundamentals = false;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-// 銘柄1件ごとの待機時間。無料プランのレート制限（1分あたりのリクエスト数上限）に
-// 引っかからないよう、余裕を持たせた間隔にしている。429が出る場合はこの値を増やす。
-const REQUEST_INTERVAL_MS = 1300;
 
 async function getLatestClose(code) {
   const cached = priceCache.get(code);
@@ -133,48 +129,122 @@ async function getLatestClose(code) {
   return value;
 }
 
+// 全銘柄を裏側で少しずつキャッシュし続けるための状態
+let isWarmingAllStocks = false;
+let warmedCount = 0;
+// 銘柄ごとの直近売上高。業界内の売上ランキングを組むために、取得できたものから蓄積していく。
+const salesByCode = new Map(); // code -> sales(円)
+
 /**
- * 全銘柄分のファンダメンタルズをバックグラウンドで取得し、fundamentalsCacheを更新する。
- * レート制限を避けるため、銘柄ごと・APIごとに間隔を空けて順番に取得する。
- * HTTPリクエストとは無関係に動くので、多少時間がかかってもタイムアウトの心配はない。
+ * 各業界の売上TOP5を先頭に、残りを後ろに続ける順序を組み立てる。
+ * まだ売上データが十分に集まっていない（1周目など）場合は、優先順位をつけず
+ * 自然な順番のまま返す（そもそもランキングが決められないため）。
  */
-async function refreshFundamentalsInBackground() {
-  if (isRefreshingFundamentals) return;
-  isRefreshingFundamentals = true;
+function buildPrioritizedOrder(allCodes) {
+  if (salesByCode.size === 0) return allCodes;
 
-  const results = [];
-  for (const code of WATCHED_CODES) {
-    try {
-      const listedInfoRes = await jquants.fetchListedInfo(code);
-      await sleep(REQUEST_INTERVAL_MS);
-      const statementsRes = await jquants.fetchStatements(code);
-      await sleep(REQUEST_INTERVAL_MS);
-      const latestCloseInfo = await getLatestClose(code);
-      await sleep(REQUEST_INTERVAL_MS);
+  const byIndustry = new Map();
+  for (const item of listedStocksCache.data) {
+    if (!byIndustry.has(item.industry)) byIndustry.set(item.industry, []);
+    byIndustry.get(item.industry).push(item.code);
+  }
 
-      const listedInfo = listedInfoRes.data?.[0] ?? null;
-      const statements = statementsRes.data ?? [];
+  const priorityCodes = [];
+  const picked = new Set();
+  for (const codes of byIndustry.values()) {
+    const ranked = [...codes].sort(
+      (a, b) => (salesByCode.get(b) ?? -Infinity) - (salesByCode.get(a) ?? -Infinity)
+    );
+    ranked.slice(0, 5).forEach((c) => {
+      if (!picked.has(c)) {
+        priorityCodes.push(c);
+        picked.add(c);
+      }
+    });
+  }
 
-      results.push(
-        mapToStockShape({
-          code,
-          listedInfo,
-          statements,
-          latestClose: latestCloseInfo?.price ?? null,
-          priceDate: latestCloseInfo?.date ?? null,
-        })
+  const rest = allCodes.filter((c) => !picked.has(c));
+  return [...priorityCodes, ...rest];
+}
+
+/**
+ * 東証全銘柄の取得を1つの継続的な処理としてまとめたもの。
+ * 1周目は売上データがまだ無いため自然な順番のまま取得し、2周目以降は
+ * その時点までに分かった売上高を使って「各業界の売上TOP5」を先頭に優先して回す。
+ * 人気の162銘柄(WATCHED_CODES)分が揃った時点でfundamentalsCache(トップ画面用)を更新し、
+ * そのまま止まらず残りの銘柄も引き続きキャッシュしていく。
+ * 全件を1周し終えたら少し待って再度最初から回る（新しいデータへの追従・再キャッシュのため）。
+ */
+async function warmAllStocksInBackground() {
+  if (isWarmingAllStocks) return;
+  isWarmingAllStocks = true;
+
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const allCodes = listedStocksCache.data.map((s) => s.code);
+      if (allCodes.length === 0) {
+        await sleep(60_000);
+        continue;
+      }
+
+      const watchedSet = new Set(WATCHED_CODES);
+      const orderedCodes = buildPrioritizedOrder(allCodes);
+
+      const watchedResults = [];
+
+      for (const code of orderedCodes) {
+        try {
+          const statements = await getCachedStatements(code);
+          const latestCloseInfo = await getLatestClose(code);
+          warmedCount += 1;
+          if (warmedCount % 100 === 0) {
+            console.log(`全銘柄キャッシュ進行中: ${warmedCount}/${orderedCodes.length}件`);
+          }
+
+          const sales = getLatestSales(statements);
+          if (sales !== null) salesByCode.set(code, sales);
+
+          if (watchedSet.has(code)) {
+            const known = listedStocksCache.data.find((s) => s.code === code);
+            const listedInfo = known ? { CoName: known.name, S33Nm: known.industry } : null;
+            watchedResults.push(
+              mapToStockShape({
+                code,
+                listedInfo,
+                statements,
+                latestClose: latestCloseInfo?.price ?? null,
+                priceDate: latestCloseInfo?.date ?? null,
+              })
+            );
+          }
+        } catch (err) {
+          console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
+          // 1銘柄の失敗で全体を止めない
+        }
+
+        // 人気162銘柄が全部終わった時点で、トップ画面用のfundamentalsCacheを早期に埋める
+        if (watchedResults.length === WATCHED_CODES.length && fundamentalsCache.data.length === 0) {
+          fundamentalsCache = { data: watchedResults, updatedAt: Date.now() };
+          console.log(`fundamentals更新完了: ${watchedResults.length}件 (${new Date().toLocaleString('ja-JP')})`);
+        }
+      }
+
+      // 1周し終えたら、その時点の162銘柄分でfundamentalsCacheも最新化しておく
+      if (watchedResults.length > 0) {
+        fundamentalsCache = { data: watchedResults, updatedAt: Date.now() };
+      }
+
+      console.log(
+        `全銘柄キャッシュが1周完了しました。次周は業界別売上TOP5を優先します (${new Date().toLocaleString('ja-JP')})`
       );
-    } catch (err) {
-      console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
-      // 1銘柄の失敗で全体を止めない。失敗した銘柄は前回キャッシュの値を使うか、スキップする。
+      warmedCount = 0;
+      // 1周し終えたら少し休んでから再度回る(翌日の新しい株価に追従するため)
+      await sleep(60 * 60 * 1000); // 1時間
     }
+  } finally {
+    isWarmingAllStocks = false;
   }
-
-  if (results.length > 0) {
-    fundamentalsCache = { data: results, updatedAt: Date.now() };
-    console.log(`fundamentals更新完了: ${results.length}件 (${new Date().toLocaleString('ja-JP')})`);
-  }
-  isRefreshingFundamentals = false;
 }
 
 /**
@@ -185,11 +255,8 @@ async function refreshFundamentalsInBackground() {
  */
 app.get('/api/fundamentals', (req, res) => {
   res.json(fundamentalsCache.data);
-
-  // キャッシュが古い（または空の）場合は、レスポンスを返した後にバックグラウンドで更新をキック
-  if (Date.now() - fundamentalsCache.updatedAt > FUNDAMENTALS_REFRESH_INTERVAL_MS) {
-    refreshFundamentalsInBackground();
-  }
+  // 全銘柄の継続キャッシュ処理(warmAllStocksInBackground)が定期的にfundamentalsCacheも
+  // 更新し続けているため、ここで個別に再取得をキックする必要はない。
 });
 
 /**
@@ -239,7 +306,7 @@ app.get('/api/listed-stocks', (req, res) => {
 /**
  * GET /api/stock/:code
  * 全銘柄の中から選ばれた1銘柄について、株価・PER/PBR/EPS/利回りなどを
- * その場で取得する（オンデマンド）。財務情報は1時間、株価は5分キャッシュされる。
+ * その場で取得する（オンデマンド）。財務情報・株価とも24時間キャッシュされる。
  */
 app.get('/api/stock/:code', async (req, res) => {
   try {
@@ -270,7 +337,10 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.listen(PORT, () => {
   console.log(`J-Quantsバックエンド起動: http://localhost:${PORT}`);
-  // 起動直後にバックグラウンドで取得を開始する
-  refreshFundamentalsInBackground();
-  refreshListedStocksInBackground();
+  // 全銘柄一覧を先に取得しておくと、その企業名・業種を再利用できる(問い合わせ回数を減らせる)。
+  // その後、全銘柄の継続キャッシュ処理を開始する(人気162銘柄を先頭に回すため、
+  // トップ画面用のデータも比較的早いタイミングで揃う)。
+  refreshListedStocksInBackground().finally(() => {
+    warmAllStocksInBackground();
+  });
 });
