@@ -92,8 +92,41 @@ async function refreshListedStocksInBackground() {
 
 // 個別銘柄の財務情報（EPS/BPS/配当等）のキャッシュ。
 // オンデマンド取得（/api/stock/:code）で毎回叩かないようにするため。
+// メモリ使用量を抑えるため、生のレスポンスをそのまま保存せず、年度決算(FY)のみ・
+// 実際に使うフィールドだけに絞って保存する（4,444銘柄分保持し続けるため、
+// ここを絞らないとメモリ不足でサーバーが落ちる原因になる）。
 const statementsCache = new Map(); // code -> { statements, fetchedAt }
 const STATEMENTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24時間(決算情報は頻繁には変わらないため)
+
+// mapToStockShape・mapToEpsHistory・getLatestSalesが実際に読んでいるフィールドのみ残す
+const STATEMENT_FIELDS_TO_KEEP = [
+  'CurPerType',
+  'DiscDate',
+  'CurFYEn',
+  'EPS',
+  'BPS',
+  'Sales',
+  'DivAnn',
+  'FDivAnn',
+  'Div1Q',
+  'Div2Q',
+  'Div3Q',
+  'DivFY',
+  'ShOutFY',
+  'TrShFY',
+];
+
+function compactStatements(records) {
+  return records
+    .filter((r) => r.CurPerType === 'FY') // 年度決算のみ(四半期の生データは不要)
+    .map((r) => {
+      const compact = {};
+      for (const key of STATEMENT_FIELDS_TO_KEEP) {
+        if (r[key] !== undefined) compact[key] = r[key];
+      }
+      return compact;
+    });
+}
 
 async function getCachedStatements(code) {
   const cached = statementsCache.get(code);
@@ -101,7 +134,7 @@ async function getCachedStatements(code) {
     return cached.statements;
   }
   const res = await jquants.fetchStatements(code);
-  const statements = res.data ?? [];
+  const statements = compactStatements(res.data ?? []);
   statementsCache.set(code, { statements, fetchedAt: Date.now() });
   return statements;
 }
@@ -110,6 +143,16 @@ async function getCachedStatements(code) {
 // 準備しておく（35銘柄 × レート制限対策の待機時間があるため、リクエスト内で
 // 同期的に処理するとタイムアウトの原因になる）。
 let fundamentalsCache = { data: [], updatedAt: 0 };
+
+// メモリ使用量を10分おきにログに出す(OOMによる強制再起動が疑わしい場合の診断用)
+setInterval(() => {
+  const mem = process.memoryUsage();
+  console.log(
+    `メモリ使用量: rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(
+      mem.heapUsed / 1024 / 1024
+    )}MB (statementsCache: ${statementsCache.size}件, priceCache: ${priceCache.size}件)`
+  );
+}, 10 * 60 * 1000);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
