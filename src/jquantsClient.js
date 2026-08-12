@@ -26,11 +26,25 @@ function scheduleThrottled(fn) {
   return result;
 }
 
+const FETCH_TIMEOUT_MS = 20_000; // 応答が無いまま固まるのを防ぐためのタイムアウト
+
+/** タイムアウト付きのfetch。応答が無い場合は例外を投げて次に進めるようにする */
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * V2 APIへの共通GETリクエスト。
  * 認証は x-api-key ヘッダーにAPIキーを付与するだけ（トークン取得・更新は不要）。
  * 実際のHTTPリクエストは上記のグローバルキュー経由で直列化され、
- * レート制限(429)に当たった場合は少し待って自動的に再試行する。
+ * レート制限(429)に当たった場合は少し長めに待って自動的に再試行する。
+ * 応答が無いまま固まった場合はタイムアウトし、キュー全体が止まらないようにする。
  */
 async function jquantsGet(path, params = {}, retriesLeft = 3) {
   const apiKey = process.env.JQUANTS_API_KEY;
@@ -43,7 +57,17 @@ async function jquantsGet(path, params = {}, retriesLeft = 3) {
   ).toString();
   const url = `${BASE_URL}${path}${query ? `?${query}` : ''}`;
 
-  const res = await scheduleThrottled(() => fetch(url, { headers: { 'x-api-key': apiKey } }));
+  let res;
+  try {
+    res = await scheduleThrottled(() => fetchWithTimeout(url, { headers: { 'x-api-key': apiKey } }));
+  } catch (err) {
+    if (err.name === 'AbortError' && retriesLeft > 0) {
+      // タイムアウトした場合も、レート制限と同様に少し待って再試行する
+      await sleep(2000);
+      return jquantsGet(path, params, retriesLeft - 1);
+    }
+    throw err;
+  }
 
   if (res.status === 429 && retriesLeft > 0) {
     // レート制限。少し長めに待ってから同じリクエストを再試行する
