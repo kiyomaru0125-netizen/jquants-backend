@@ -4,6 +4,9 @@
   "description": "日本株高配当ボード用のJ-Quants APIバックエンド",
   "type": "module",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"

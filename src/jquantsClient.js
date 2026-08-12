@@ -26,25 +26,27 @@ function scheduleThrottled(fn) {
   return result;
 }
 
-const FETCH_TIMEOUT_MS = 20_000; // 応答が無いまま固まるのを防ぐためのタイムアウト
-
-/** タイムアウト付きのfetch。応答が無い場合は例外を投げて次に進めるようにする */
-async function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+/**
+ * 何らかの理由でキューが永久に止まってしまった場合の避難用リセット。
+ * 現在詰まっているリクエストは諦めて(結果は捨てて)、新しいリクエストから
+ * 受け付けられるようにする。
+ */
+export function resetThrottleQueue() {
+  queue = Promise.resolve();
+  lastCallAt = 0;
 }
+
+const FETCH_TIMEOUT_MS = 20_000; // 応答が無いまま固まるのを防ぐためのタイムアウト(本文の読み込み完了まで含む)
 
 /**
  * V2 APIへの共通GETリクエスト。
  * 認証は x-api-key ヘッダーにAPIキーを付与するだけ（トークン取得・更新は不要）。
  * 実際のHTTPリクエストは上記のグローバルキュー経由で直列化され、
  * レート制限(429)に当たった場合は少し長めに待って自動的に再試行する。
- * 応答が無いまま固まった場合はタイムアウトし、キュー全体が止まらないようにする。
+ *
+ * タイムアウトは「接続開始」だけでなく「レスポンス本文を読み込み終える」までを含めて
+ * かけている。本文の受信中に通信が止まった場合、fetch()自体は解決済みのため
+ * 接続開始時点のタイムアウトだけでは検知できず、キュー全体がハングしてしまうため。
  */
 async function jquantsGet(path, params = {}, retriesLeft = 3) {
   const apiKey = process.env.JQUANTS_API_KEY;
@@ -57,29 +59,45 @@ async function jquantsGet(path, params = {}, retriesLeft = 3) {
   ).toString();
   const url = `${BASE_URL}${path}${query ? `?${query}` : ''}`;
 
-  let res;
+  const doRequest = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { headers: { 'x-api-key': apiKey }, signal: controller.signal });
+
+      if (res.status === 429) {
+        const rateLimitError = new Error('Rate limit exceeded');
+        rateLimitError.isRateLimited = true;
+        throw rateLimitError;
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`J-Quants API エラー (${path}): ${res.status} ${text}`);
+      }
+
+      // レスポンス本文の読み込みも、タイマーが有効な(clearTimeoutされる前の)このtry内で行う
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   try {
-    res = await scheduleThrottled(() => fetchWithTimeout(url, { headers: { 'x-api-key': apiKey } }));
+    return await scheduleThrottled(doRequest);
   } catch (err) {
+    if (err.isRateLimited && retriesLeft > 0) {
+      // レート制限。少し長めに待ってから同じリクエストを再試行する
+      await sleep(3000);
+      return jquantsGet(path, params, retriesLeft - 1);
+    }
     if (err.name === 'AbortError' && retriesLeft > 0) {
-      // タイムアウトした場合も、レート制限と同様に少し待って再試行する
+      // タイムアウト(接続開始〜本文読み込み完了までのどこかで発生)。少し待って再試行する
       await sleep(2000);
       return jquantsGet(path, params, retriesLeft - 1);
     }
     throw err;
   }
-
-  if (res.status === 429 && retriesLeft > 0) {
-    // レート制限。少し長めに待ってから同じリクエストを再試行する
-    await sleep(3000);
-    return jquantsGet(path, params, retriesLeft - 1);
-  }
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`J-Quants API エラー (${path}): ${res.status} ${text}`);
-  }
-  return res.json();
 }
 
 /**

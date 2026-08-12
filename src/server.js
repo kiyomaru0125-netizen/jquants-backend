@@ -1,10 +1,20 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import jquants from './jquantsClient.js';
+import jquants, { resetThrottleQueue } from './jquantsClient.js';
 import { mapToStockShape, mapToEpsHistory, mapToListedStockShape, getLatestSales } from './mapStocks.js';
 
 const app = express();
+
+// 想定外の例外が発生しても、サーバープロセス自体は落とさない(最終防衛線)。
+// 個々のエンドポイント・バックグラウンド処理側で拾いきれなかった場合の保険。
+process.on('unhandledRejection', (err) => {
+  console.error('⚠️ unhandledRejection:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ uncaughtException:', err);
+});
+
 app.set('etag', false); // ブラウザが古いレスポンスを304で使い回さないようにする
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -103,6 +113,34 @@ let fundamentalsCache = { data: [], updatedAt: 0 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * 与えられたpromiseが指定時間内に終わらなければ諦めて、ループを先に進めるためのヘルパー。
+ * (内部のfetchタイムアウトが何らかの理由で効かなかった場合の、最後の保険)
+ * 諦めた後にもとのpromiseが解決/失敗しても、それは無視する(未処理のrejectionにしない)。
+ */
+function withHardTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`タイムアウト(${label})`));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  }).catch((err) => {
+    // 元のpromiseが後から解決/失敗しても静かに無視されるよう、ここで拾っておく
+    promise.catch(() => {});
+    throw err;
+  });
+}
+
 async function getLatestClose(code) {
   const cached = priceCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS) {
@@ -132,8 +170,22 @@ async function getLatestClose(code) {
 // 全銘柄を裏側で少しずつキャッシュし続けるための状態
 let isWarmingAllStocks = false;
 let warmedCount = 0;
+let lastProgressAt = Date.now();
 // 銘柄ごとの直近売上高。業界内の売上ランキングを組むために、取得できたものから蓄積していく。
 const salesByCode = new Map(); // code -> sales(円)
+
+// 監視役: 一定時間(5分)進捗が無ければ、何かがハングしていると判断してキューを強制リセットする。
+// これにより、想定していない箇所で通信が固まった場合でも、全体が完全に止まったままにならない。
+const WATCHDOG_STALL_MS = 5 * 60 * 1000;
+setInterval(() => {
+  if (isWarmingAllStocks && Date.now() - lastProgressAt > WATCHDOG_STALL_MS) {
+    console.warn(
+      `⚠️ ${WATCHDOG_STALL_MS / 60000}分以上進捗が無いため、キューを強制リセットします (${new Date().toLocaleString('ja-JP')})`
+    );
+    resetThrottleQueue();
+    lastProgressAt = Date.now();
+  }
+}, 60 * 1000);
 
 /**
  * 各業界の売上TOP5を先頭に、残りを後ろに続ける順序を組み立てる。
@@ -195,8 +247,8 @@ async function warmAllStocksInBackground() {
 
       for (const code of orderedCodes) {
         try {
-          const statements = await getCachedStatements(code);
-          const latestCloseInfo = await getLatestClose(code);
+          const statements = await withHardTimeout(getCachedStatements(code), 90_000, `statements:${code}`);
+          const latestCloseInfo = await withHardTimeout(getLatestClose(code), 90_000, `price:${code}`);
           warmedCount += 1;
           if (warmedCount % 100 === 0) {
             console.log(`全銘柄キャッシュ進行中: ${warmedCount}/${orderedCodes.length}件`);
@@ -222,6 +274,9 @@ async function warmAllStocksInBackground() {
           console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
           // 1銘柄の失敗で全体を止めない
         }
+
+        // 成功・失敗にかかわらず、1銘柄の処理が完了したことを記録する(ウォッチドッグ用)
+        lastProgressAt = Date.now();
 
         // 人気162銘柄が全部終わった時点で、トップ画面用のfundamentalsCacheを早期に埋める
         if (watchedResults.length === WATCHED_CODES.length && fundamentalsCache.data.length === 0) {
@@ -266,8 +321,8 @@ app.get('/api/fundamentals', (req, res) => {
 app.get('/api/eps-history/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const statementsRes = await jquants.fetchStatements(code);
-    const history = mapToEpsHistory(statementsRes.data ?? [], 5);
+    const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
+    const history = mapToEpsHistory(statements, 5);
     res.json(history);
   } catch (err) {
     console.error(err);
@@ -282,7 +337,7 @@ app.get('/api/eps-history/:code', async (req, res) => {
 app.get('/api/price/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const { price, date } = await getLatestClose(code);
+    const { price, date } = await withHardTimeout(getLatestClose(code), 30_000, `price:${code}`);
     res.json({ code, price, date });
   } catch (err) {
     console.error(err);
@@ -315,8 +370,8 @@ app.get('/api/stock/:code', async (req, res) => {
     // 知っているため、クエリパラメータで受け取って再取得を省略する（問い合わせ回数を減らすため）
     const { name: knownName, industry: knownIndustry } = req.query;
 
-    const statements = await getCachedStatements(code);
-    const latestCloseInfo = await getLatestClose(code);
+    const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
+    const latestCloseInfo = await withHardTimeout(getLatestClose(code), 30_000, `price:${code}`);
 
     const stock = mapToStockShape({
       code,
@@ -340,7 +395,14 @@ app.listen(PORT, () => {
   // 全銘柄一覧を先に取得しておくと、その企業名・業種を再利用できる(問い合わせ回数を減らせる)。
   // その後、全銘柄の継続キャッシュ処理を開始する(人気162銘柄を先頭に回すため、
   // トップ画面用のデータも比較的早いタイミングで揃う)。
-  refreshListedStocksInBackground().finally(() => {
-    warmAllStocksInBackground();
-  });
+  // 万一、全銘柄一覧の取得自体が固まってしまった場合でも、10分で見切りをつけて
+  // 全銘柄の継続キャッシュ処理を開始する(その場合、企業名・業種の再利用ができないだけで
+  // 動作自体は継続できる)。
+  withHardTimeout(refreshListedStocksInBackground(), 10 * 60 * 1000, 'refreshListedStocksInBackground')
+    .catch((err) => {
+      console.error('全銘柄一覧の初回取得がタイムアウトしました:', err.message);
+    })
+    .finally(() => {
+      warmAllStocksInBackground();
+    });
 });
