@@ -70,7 +70,9 @@ export function mapToListedStockShape(record) {
  */
 export function mapToStockShape({ code, listedInfo, statements, latestClose, priceDate }) {
   const annual = extractAnnualStatements(statements);
-  const latestAnnual = annual[0] ?? null;
+  // 「業績予想の修正」など、実績のEPSを含まない開示がFY扱いで最新に来ることがあるため、
+  // 単純に一番新しい日付のレコードではなく、EPSが実際に入っている中で最新のものを優先する
+  const latestAnnual = annual.find((a) => toNumber(a.EPS) !== null) ?? annual[0] ?? null;
 
   const eps = toNumber(latestAnnual?.EPS);
   const bps = toNumber(latestAnnual?.BPS);
@@ -108,13 +110,64 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
   };
 }
 
+/** 年度(CurFYEnの年)ごとに、最新のDiscDateを持つレコードだけへ集約する(重複開示の除去) */
+function dedupeByYear(records) {
+  const byYear = new Map(); // year -> record
+  for (const s of records) {
+    const year = new Date(s.CurFYEn).getFullYear();
+    const existing = byYear.get(year);
+    if (!existing || new Date(s.DiscDate) > new Date(existing.DiscDate)) {
+      byYear.set(year, s);
+    }
+  }
+  return byYear;
+}
+
 /**
  * EPS推移グラフ用に、年度決算からEPSの時系列（最大10年分）を作る。
+ * 「業績予想の修正」等でEPSを含まないFY扱いのレコードは、グラフを歪めるので除外する。
+ * また、同一の決算期（年度）について複数回開示されている場合（予想の修正等）は、
+ * その年度で最新の1件だけに集約する（同じ年が重複して並ぶのを防ぐ）。
  */
 export function mapToEpsHistory(statements, yearsLimit = 10) {
-  const annual = extractAnnualStatements(statements).slice(0, yearsLimit).reverse();
-  return annual.map((s) => ({
-    year: new Date(s.CurFYEn).getFullYear(),
+  const withEps = extractAnnualStatements(statements).filter((s) => toNumber(s.EPS) !== null);
+  const byYear = dedupeByYear(withEps);
+
+  const dedupedSortedDesc = [...byYear.entries()].sort((a, b) => b[0] - a[0]); // 年の新しい順
+  const limited = dedupedSortedDesc.slice(0, yearsLimit).reverse(); // 古い→新しい順に戻す
+
+  return limited.map(([year, s]) => ({
+    year,
     eps: toNumber(s.EPS),
   }));
+}
+
+/**
+ * 年間配当(実績)の推移と、連続増配年数を作る。
+ * Lightプランで取得できる範囲(最大5年)を想定したデフォルトになっている。
+ * 「増配」は前年より実際に配当額が増えている場合のみカウントする（同額維持は増配としない）。
+ */
+export function mapToDividendHistory(statements, yearsLimit = 5) {
+  const withDiv = extractAnnualStatements(statements).filter((s) => toNumber(s.DivAnn) !== null);
+  const byYear = dedupeByYear(withDiv);
+
+  const sortedDesc = [...byYear.entries()].sort((a, b) => b[0] - a[0]);
+  const limited = sortedDesc.slice(0, yearsLimit).reverse(); // 古い→新しい順
+
+  const history = limited.map(([year, s]) => ({
+    year,
+    dividend: toNumber(s.DivAnn),
+  }));
+
+  // 最新年から遡って、前年より増えている連続回数を数える
+  let consecutiveIncreaseYears = 0;
+  for (let i = history.length - 1; i > 0; i--) {
+    if (history[i].dividend > history[i - 1].dividend) {
+      consecutiveIncreaseYears += 1;
+    } else {
+      break;
+    }
+  }
+
+  return { history, consecutiveIncreaseYears };
 }

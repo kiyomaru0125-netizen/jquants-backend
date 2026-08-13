@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import jquants, { resetThrottleQueue } from './jquantsClient.js';
-import { mapToStockShape, mapToEpsHistory, mapToListedStockShape, getLatestSales } from './mapStocks.js';
+import { mapToStockShape, mapToEpsHistory, mapToDividendHistory, mapToListedStockShape, getLatestSales } from './mapStocks.js';
 
 const app = express();
 
@@ -337,8 +337,15 @@ async function warmAllStocksInBackground() {
         `全銘柄キャッシュが1周完了しました。次周は業界別売上TOP5を優先します (${new Date().toLocaleString('ja-JP')})`
       );
       warmedCount = 0;
-      // 1周し終えたら少し休んでから再度回る(翌日の新しい株価に追従するため)
-      await sleep(60 * 60 * 1000); // 1時間
+      // 1周し終えたら少し休んでから再度回る(翌日の新しい株価に追従するため)。
+      // この「意図した休憩」を監視役が異常停止と誤解しないよう、小分けにスリープしながら
+      // 進捗時刻を更新し続ける。
+      const REST_MS = 60 * 60 * 1000; // 1時間
+      const REST_CHUNK_MS = 60 * 1000; // 1分刻み
+      for (let elapsed = 0; elapsed < REST_MS; elapsed += REST_CHUNK_MS) {
+        await sleep(REST_CHUNK_MS);
+        lastProgressAt = Date.now();
+      }
     }
   } finally {
     isWarmingAllStocks = false;
@@ -367,6 +374,22 @@ app.get('/api/eps-history/:code', async (req, res) => {
     const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
     const history = mapToEpsHistory(statements, 5);
     res.json(history);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/dividend-history/:code
+ * 年間配当(実績)の推移(最大5年分)と、連続増配年数を返す。
+ */
+app.get('/api/dividend-history/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
+    const result = mapToDividendHistory(statements, 5);
+    res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -436,8 +459,8 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.listen(PORT, () => {
   console.log(`J-Quantsバックエンド起動: http://localhost:${PORT}`);
   // 全銘柄一覧を先に取得しておくと、その企業名・業種を再利用できる(問い合わせ回数を減らせる)。
-  // その後、全銘柄の継続キャッシュ処理を開始する(人気162銘柄を先頭に回すため、
-  // トップ画面用のデータも比較的早いタイミングで揃う)。
+  // その後、全銘柄の継続キャッシュ処理を開始する。1周目は優先順位をつけず自然な順番のまま進み、
+  // 2周目以降は各業界の売上TOP5を優先する(buildPrioritizedOrder参照)。
   // 万一、全銘柄一覧の取得自体が固まってしまった場合でも、10分で見切りをつけて
   // 全銘柄の継続キャッシュ処理を開始する(その場合、企業名・業種の再利用ができないだけで
   // 動作自体は継続できる)。
