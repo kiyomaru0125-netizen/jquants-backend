@@ -78,6 +78,13 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
   const bps = toNumber(latestAnnual?.BPS);
   const dividendPerShare = toNumber(latestAnnual?.DivAnn) ?? toNumber(latestAnnual?.FDivAnn);
   const sales = toNumber(latestAnnual?.Sales);
+  const netProfit = toNumber(latestAnnual?.NP);
+  const totalAssets = toNumber(latestAnnual?.TA);
+
+  // ROE(自己資本利益率) = EPS ÷ BPS × 100 (1株あたりで計算しているだけで、NP÷Eqと同義)
+  const roe = eps !== null && bps ? Number(((eps / bps) * 100).toFixed(1)) : null;
+  // ROA(総資産利益率) = 純利益 ÷ 総資産 × 100
+  const roa = netProfit !== null && totalAssets ? Number(((netProfit / totalAssets) * 100).toFixed(1)) : null;
 
   const shOutFY = toNumber(latestAnnual?.ShOutFY);
   const trShFY = toNumber(latestAnnual?.TrShFY);
@@ -105,6 +112,8 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     dividendFreq: estimateDividendFreq(latestAnnual),
     // 売上高(円)。並び替え用途のほか、表示にも使う
     sales: sales ?? null,
+    roe: roe,
+    roa: roa,
     // J-Quantsは株数を「株」単位で返すため、ダッシュボード側の「百万株」単位に変換
     sharesOutstanding: sharesOutstandingRaw ? Math.round(sharesOutstandingRaw / 1_000_000) : null,
   };

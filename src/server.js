@@ -106,6 +106,8 @@ const STATEMENT_FIELDS_TO_KEEP = [
   'EPS',
   'BPS',
   'Sales',
+  'NP', // 純利益(ROA計算用)
+  'TA', // 総資産(ROA計算用)
   'DivAnn',
   'FDivAnn',
   'Div1Q',
