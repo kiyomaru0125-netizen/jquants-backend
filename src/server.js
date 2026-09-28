@@ -11,6 +11,7 @@ import {
   getSplitCheckStartDate,
   getHistorySplitCheckStartDate,
 } from './mapStocks.js';
+import { runScreening } from './screening.js';
 
 const app = express();
 
@@ -117,6 +118,8 @@ const STATEMENT_FIELDS_TO_KEEP = [
   'Sales',
   'NP', // 純利益(ROA計算用)
   'TA', // 総資産(ROA計算用)
+  'OP', // 営業利益(ROIC近似計算用)
+  'Eq', // 純資産(ROIC近似計算用)
   'DivAnn',
   'FDivAnn',
   'Div1Q',
@@ -265,6 +268,8 @@ let warmedCount = 0;
 let lastProgressAt = Date.now();
 // 銘柄ごとの直近売上高。業界内の売上ランキングを組むために、取得できたものから蓄積していく。
 const salesByCode = new Map(); // code -> sales(円)
+// スクリーニング(毎日のメール通知)用に、全銘柄の指標とEPS推移を保持する
+const screeningRecords = new Map(); // code -> { stock, epsHistory }
 
 // 監視役: 一定時間(5分)進捗が無ければ、何かがハングしていると判断してキューを強制リセットする。
 // これにより、想定していない箇所で通信が固まった場合でも、全体が完全に止まったままにならない。
@@ -347,6 +352,11 @@ async function warmAllStocksInBackground() {
 
       const allCodes = listedStocksCache.data.map((s) => s.code);
       const listedSet = new Set(allCodes);
+      const listedByCode = new Map(listedStocksCache.data.map((s) => [s.code, s]));
+      // 上場廃止などで一覧から消えた銘柄は、スクリーニング対象からも外す
+      for (const code of screeningRecords.keys()) {
+        if (!listedSet.has(code)) screeningRecords.delete(code);
+      }
       const watchedSet = new Set(WATCHED_CODES);
 
       // 人気銘柄のうち、全銘柄一覧に存在するもの(上場廃止などで消えたものは除く)
@@ -382,20 +392,25 @@ async function warmAllStocksInBackground() {
           const sales = getLatestSales(statements);
           if (sales !== null) salesByCode.set(code, sales);
 
+          // 全銘柄について表示用の指標を計算し、スクリーニング用に保持する
+          const known = listedByCode.get(code);
+          const listedInfo = known ? { CoName: known.name, S33Nm: known.industry } : null;
+          const stock = mapToStockShape({
+            code,
+            listedInfo,
+            statements,
+            latestClose: priceInfo?.price ?? null,
+            priceDate: priceInfo?.date ?? null,
+            prevClose: priceInfo?.prevClose ?? null,
+            splits: priceInfo?.splits ?? [],
+          });
+          screeningRecords.set(code, {
+            stock,
+            epsHistory: mapToEpsHistory(statements, 5, priceInfo?.splits ?? []),
+          });
+
           if (watchedSet.has(code)) {
-            const known = listedStocksCache.data.find((s) => s.code === code);
-            const listedInfo = known ? { CoName: known.name, S33Nm: known.industry } : null;
-            watchedResults.push(
-              mapToStockShape({
-                code,
-                listedInfo,
-                statements,
-                latestClose: priceInfo?.price ?? null,
-                priceDate: priceInfo?.date ?? null,
-                prevClose: priceInfo?.prevClose ?? null,
-                splits: priceInfo?.splits ?? [],
-              })
-            );
+            watchedResults.push(stock);
           }
         } catch (err) {
           console.error(`銘柄 ${code} の取得に失敗しました:`, err.message);
@@ -556,6 +571,21 @@ app.get('/api/stock/:code', async (req, res) => {
     });
 
     res.json(stock);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/screen
+ * キャッシュ済みの全銘柄を、高配当株の条件(src/screening.js)で判定した結果を返す。
+ * 毎日のメール通知(.github/workflows/daily-screening.yml)から呼ばれる。
+ * coverage.screened が少ない場合は、サーバー再起動直後でまだ全銘柄を判定できていない。
+ */
+app.get('/api/screen', (req, res) => {
+  try {
+    res.json(runScreening(screeningRecords, { totalListed: listedStocksCache.data.length || null }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

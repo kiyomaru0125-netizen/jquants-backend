@@ -32,6 +32,7 @@ npm start
 | `GET /api/eps-history/:code` | 指定銘柄のEPS推移（最大5年分・株式分割補正済み） |
 | `GET /api/dividend-history/:code` | 指定銘柄の年間配当の推移（最大5年分・株式分割補正済み）と連続増配年数 |
 | `GET /api/price/:code` | 指定銘柄の直近終値のみ |
+| `GET /api/screen` | 高配当株の条件判定の結果(毎日のメール通知用) |
 | `GET /health` | 死活監視用 |
 
 ## フロントエンド（StockDashboard.jsx）側の差し替えイメージ
@@ -100,3 +101,25 @@ useEffect(() => {
    (`AdjFactor`)から決算以降の分割を検出し、EPS・BPS・配当・発行済株式数を今の株数基準に補正して
    います。そのため、株価は直近の年度決算の期末ごろからの日足をまとめて取得しています。
    期中に分割して年間配当が「－」で開示された年は、配当の推移から除外されます。
+
+## 毎日のメール通知(高配当株スクリーニング)
+
+平日18時(日本時間)に、全条件を満たす銘柄をメールで送ります(0件の日も「該当なし」と届きます)。
+
+- 判定条件: `src/screening.js` の `CRITERIA`(数値を変えたい場合はここだけ直す)
+- 送信: `.github/workflows/daily-screening.yml` → `scripts/send_screening_mail.py`
+- ROICは「営業利益×(1−30%)÷純資産」の近似値(決算サマリーに有利子負債が無いため)。借入の多い会社は高めに出ます。
+- 流動比率はLightプランの決算サマリーにデータが無いため判定していません。
+- サーバー再起動直後は全銘柄の判定が終わっていないため、メールに「判定できたのは N / M 銘柄のみ」と注意書きが出ます。
+
+### 初回設定(GitHubのSecrets)
+
+リポジトリの Settings → Secrets and variables → Actions → New repository secret で次の3つを登録します。
+
+| 名前 | 値 |
+|---|---|
+| `GMAIL_USER` | 送信に使うGmailアドレス |
+| `GMAIL_APP_PASSWORD` | Gmailのアプリパスワード(Googleアカウント → セキュリティ → 2段階認証 → アプリパスワード) |
+| `MAIL_TO` | 送り先のアドレス(複数ならカンマ区切り) |
+
+登録後、Actions → 「Daily high-dividend screening mail」→「Run workflow」で手動送信して確認できます。

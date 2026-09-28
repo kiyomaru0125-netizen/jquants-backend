@@ -1,0 +1,22 @@
+name: Daily high-dividend screening mail
+
+on:
+  schedule:
+    # 平日 18:00(日本時間) = 09:00(UTC)。GitHub側の都合で数分〜数十分遅れることがあります
+    - cron: '0 9 * * 1-5'
+  workflow_dispatch: {} # 手動実行用のボタン(動作確認に使う)
+
+jobs:
+  mail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Send screening result
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python scripts/send_screening_mail.py

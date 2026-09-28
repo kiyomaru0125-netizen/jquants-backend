@@ -35,6 +35,9 @@ function toNumber(value) {
 //     分割は権利落ち日が期末の数日前になる一方、期末配当は分割前の株数に対して支払われるため。
 // ---------------------------------------------------------------------------
 
+/** ROIC近似計算に使う実効税率 */
+const ROIC_TAX_RATE = 0.3;
+
 /** 期末の何日前以降の権利落ちを「期末後の分割」とみなすか(権利落ち日は基準日の数営業日前) */
 const FY_END_SPLIT_MARGIN_DAYS = 7;
 
@@ -187,6 +190,20 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
   const roe = eps !== null && bps ? Number(((eps / bps) * 100).toFixed(1)) : null;
   // ROA(総資産利益率) = 純利益 ÷ 総資産 × 100
   const roa = netProfit !== null && totalAssets ? Number(((netProfit / totalAssets) * 100).toFixed(1)) : null;
+  // ROIC(近似) = 営業利益 × (1 − 税率30%) ÷ 純資産 × 100
+  // 本来の分母は「純資産 + 有利子負債」だが、決算サマリーに有利子負債が無いため純資産で代用している。
+  // そのため借入の多い会社ほど実際より高く出る点に注意。
+  const operatingProfit = toNumber(latestAnnual?.OP);
+  const equity = toNumber(latestAnnual?.Eq);
+  const roic =
+    operatingProfit !== null && equity && equity > 0
+      ? Number((((operatingProfit * (1 - ROIC_TAX_RATE)) / equity) * 100).toFixed(1))
+      : null;
+  // 配当性向 = 1株配当 ÷ EPS × 100 (EPSが赤字・ゼロの場合は計算しない)
+  const payoutRatio =
+    dividendPerShare !== null && eps !== null && eps > 0
+      ? Number(((dividendPerShare / eps) * 100).toFixed(1))
+      : null;
 
   const shOutFY = toNumber(latestAnnual?.ShOutFY);
   const trShFY = toNumber(latestAnnual?.TrShFY);
@@ -220,6 +237,8 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     sales: sales ?? null,
     roe: roe,
     roa: roa,
+    roic: roic,
+    payoutRatio: payoutRatio,
     // J-Quantsは株数を「株」単位で返すため、ダッシュボード側の「百万株」単位に変換
     sharesOutstanding: sharesOutstandingRaw ? Math.round(sharesOutstandingRaw / 1_000_000) : null,
   };
