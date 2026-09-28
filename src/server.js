@@ -2,7 +2,15 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import jquants, { resetThrottleQueue } from './jquantsClient.js';
-import { mapToStockShape, mapToEpsHistory, mapToDividendHistory, mapToListedStockShape, getLatestSales } from './mapStocks.js';
+import {
+  mapToStockShape,
+  mapToEpsHistory,
+  mapToDividendHistory,
+  mapToListedStockShape,
+  getLatestSales,
+  getSplitCheckStartDate,
+  getHistorySplitCheckStartDate,
+} from './mapStocks.js';
 
 const app = express();
 
@@ -24,16 +32,16 @@ const PORT = process.env.PORT || 8787;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 
-// ダッシュボードで扱う銘柄コード一覧
-// （今はStockDashboard.jsxのMASTER_STOCKSと同じ35銘柄を想定。
-//  将来的には検索対象を広げる場合、東証上場銘柄一覧APIから動的に取得する形に変更する）
+// トップ画面(/api/fundamentals)に並べる人気銘柄のコード一覧。
+// 上場廃止になった銘柄はここから外す(残っていても処理は止まらないが、起動時ログに警告が出る)。
+//   2024-07 上場廃止: 2651 ローソン / 2025-09 上場廃止: 9613 NTTデータグループ
 const WATCHED_CODES = [
   '7203', '7267', '7269', '7201', '7261',
   '6758', '6501', '6702', '6752', '6503',
   '9984', '9432', '9433', '9434', '4689',
   '8306', '8316', '8411', '8308', '7182',
   '8058', '8031', '8001', '8002', '8053',
-  '3382', '8267', '9983', '3092', '2651',
+  '3382', '8267', '9983', '3092',
   '4568', '4502', '4523', '4519', '4507',
   '1928', '1925', '1801', '1802', '1803',
   '1332', '1333', '1301', '1379', '1377',
@@ -60,7 +68,7 @@ const WATCHED_CODES = [
   '8630', '8795', '8570', '8572', '8591',
   '8697', '8585', '8801', '8802', '8830',
   '3289', '8804', '4661', '6098', '4324',
-  '9613', '2432',
+  '2432',
 ];
 
 // 直近の株価キャッシュ（同時に何度もdaily_quotesを叩かないようにする簡易キャッシュ）
@@ -142,7 +150,7 @@ async function getCachedStatements(code) {
 }
 
 // 全銘柄分のファンダメンタルズは、HTTPリクエストの応答とは切り離してバックグラウンドで
-// 準備しておく（35銘柄 × レート制限対策の待機時間があるため、リクエスト内で
+// 準備しておく（人気銘柄 × レート制限対策の待機時間があるため、リクエスト内で
 // 同期的に処理するとタイムアウトの原因になる）。
 let fundamentalsCache = { data: [], updatedAt: 0 };
 
@@ -186,29 +194,57 @@ function withHardTimeout(promise, ms, label) {
   });
 }
 
-async function getLatestClose(code) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const toIsoDate = (d) => d.toISOString().slice(0, 10);
+
+/**
+ * 直近終値と、指定日以降の株式分割(併合)の一覧を返す。
+ *   splitsFrom: 分割を調べ始める日付(YYYY-MM-DD)。決算期末の少し前を渡す。
+ *               省略時は直近10日分だけ取得する(終値だけが必要な場合)。
+ * 日足の調整係数(AdjFactor)が1以外の日を分割・併合として扱う
+ * (例: 1株→2株の分割なら、権利落ち日のAdjFactorが0.5)。
+ * キャッシュは「どの日付までさかのぼって分割を調べたか」も覚えておき、
+ * それより古い日付を求められた場合だけ取り直す。
+ */
+async function getPriceInfo(code, splitsFrom) {
+  const today = new Date();
+  const defaultFrom = toIsoDate(new Date(today.getTime() - 10 * DAY_MS));
+  // Lightプランで取得できるのは過去5年分のため、それより前は求めない
+  const oldestAllowed = toIsoDate(new Date(today.getTime() - (5 * 365 - 7) * DAY_MS));
+  let from = splitsFrom && splitsFrom < defaultFrom ? splitsFrom : defaultFrom;
+  if (from < oldestAllowed) from = oldestAllowed;
+
   const cached = priceCache.get(code);
-  if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS) {
-    return cached.value; // { price, date }
+  if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS && cached.coveredFrom <= from) {
+    return cached.value; // { price, date, splits }
   }
 
-  // Lightプラン以上では当日分のデータが取得できるため、直近10営業日分の範囲で取得する
-  // （Freeプランの12週間遅延制限があった場合は、toを91日前などに戻す必要がある）
-  const toDate = new Date();
-  const to = toDate.toISOString().slice(0, 10);
-
-  const fromDate = new Date(toDate);
-  fromDate.setDate(fromDate.getDate() - 10);
-  const from = fromDate.toISOString().slice(0, 10);
-
-  const data = await jquants.fetchDailyQuotes(code, { from, to });
+  const data = await jquants.fetchDailyQuotes(code, { from, to: toIsoDate(today) });
   const quotes = data.data ?? [];
-  const latest = quotes[quotes.length - 1];
-  const price = latest ? Number(latest.C ?? latest.Close) : null;
-  const date = latest ? (latest.Date ?? latest.D ?? null) : null;
 
-  const value = { price, date };
-  priceCache.set(code, { value, fetchedAt: Date.now() });
+  // 売買停止などで終値が空の日を飛ばし、値のある直近の日を採用する
+  let price = null;
+  let date = null;
+  for (let i = quotes.length - 1; i >= 0; i--) {
+    const raw = quotes[i].C ?? quotes[i].Close;
+    const close = Number(raw);
+    if (raw != null && raw !== '' && Number.isFinite(close) && close > 0) {
+      price = close;
+      date = quotes[i].Date ?? quotes[i].D ?? null;
+      break;
+    }
+  }
+
+  const splits = [];
+  for (const q of quotes) {
+    const factor = Number(q.AdjFactor ?? q.AdjustmentFactor);
+    if (Number.isFinite(factor) && factor > 0 && factor !== 1) {
+      splits.push({ date: q.Date ?? q.D, factor });
+    }
+  }
+
+  const value = { price, date, splits };
+  priceCache.set(code, { value, fetchedAt: Date.now(), coveredFrom: from });
   return value;
 }
 
@@ -234,22 +270,25 @@ setInterval(() => {
 
 /**
  * 各業界の売上TOP5を先頭に、残りを後ろに続ける順序を組み立てる。
+ * 対象は引数で渡されたコードだけ(人気銘柄は呼び出し側で別途先頭に置くため、ここには含めない)。
  * まだ売上データが十分に集まっていない（1周目など）場合は、優先順位をつけず
  * 自然な順番のまま返す（そもそもランキングが決められないため）。
  */
-function buildPrioritizedOrder(allCodes) {
-  if (salesByCode.size === 0) return allCodes;
+function buildPrioritizedOrder(codes) {
+  if (salesByCode.size === 0) return codes;
 
+  const target = new Set(codes);
   const byIndustry = new Map();
   for (const item of listedStocksCache.data) {
+    if (!target.has(item.code)) continue;
     if (!byIndustry.has(item.industry)) byIndustry.set(item.industry, []);
     byIndustry.get(item.industry).push(item.code);
   }
 
   const priorityCodes = [];
   const picked = new Set();
-  for (const codes of byIndustry.values()) {
-    const ranked = [...codes].sort(
+  for (const industryCodes of byIndustry.values()) {
+    const ranked = [...industryCodes].sort(
       (a, b) => (salesByCode.get(b) ?? -Infinity) - (salesByCode.get(a) ?? -Infinity)
     );
     ranked.slice(0, 5).forEach((c) => {
@@ -260,16 +299,16 @@ function buildPrioritizedOrder(allCodes) {
     });
   }
 
-  const rest = allCodes.filter((c) => !picked.has(c));
+  const rest = codes.filter((c) => !picked.has(c));
   return [...priorityCodes, ...rest];
 }
 
 /**
  * 東証全銘柄の取得を1つの継続的な処理としてまとめたもの。
- * 1周目は売上データがまだ無いため自然な順番のまま取得し、2周目以降は
- * その時点までに分かった売上高を使って「各業界の売上TOP5」を先頭に優先して回す。
- * 人気の162銘柄(WATCHED_CODES)分が揃った時点でfundamentalsCache(トップ画面用)を更新し、
- * そのまま止まらず残りの銘柄も引き続きキャッシュしていく。
+ * 毎周、まず人気の銘柄(WATCHED_CODES)を先に処理し、それが終わった時点で
+ * fundamentalsCache(トップ画面用)を更新する(起動から数分でトップ画面が実データになる)。
+ * その後、残りの銘柄を続けてキャッシュする。1周目は自然な順番のまま、2周目以降は
+ * その時点までに分かった売上高を使って「各業界の売上TOP5」を優先して回す。
  * 全件を1周し終えたら少し待って再度最初から回る（新しいデータへの追従・再キャッシュのため）。
  */
 async function warmAllStocksInBackground() {
@@ -279,21 +318,51 @@ async function warmAllStocksInBackground() {
   try {
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const allCodes = listedStocksCache.data.map((s) => s.code);
-      if (allCodes.length === 0) {
-        await sleep(60_000);
-        continue;
+      if (listedStocksCache.data.length === 0) {
+        // 起動時の全銘柄一覧の取得に失敗していた場合は、ここで取り直す
+        // (以前は検索画面が開かれるまで再取得されず、何もキャッシュされないままになっていた)
+        try {
+          await withHardTimeout(refreshListedStocksInBackground(), 10 * 60 * 1000, 'refreshListedStocks(retry)');
+        } catch (err) {
+          console.error('全銘柄一覧の再取得に失敗しました:', err.message);
+        }
+        lastProgressAt = Date.now();
+        if (listedStocksCache.data.length === 0) {
+          await sleep(60_000);
+          lastProgressAt = Date.now();
+          continue;
+        }
       }
 
+      const allCodes = listedStocksCache.data.map((s) => s.code);
+      const listedSet = new Set(allCodes);
       const watchedSet = new Set(WATCHED_CODES);
-      const orderedCodes = buildPrioritizedOrder(allCodes);
+
+      // 人気銘柄のうち、全銘柄一覧に存在するもの(上場廃止などで消えたものは除く)
+      const watchedCodes = WATCHED_CODES.filter((c) => listedSet.has(c));
+      const missingWatched = WATCHED_CODES.filter((c) => !listedSet.has(c));
+      if (missingWatched.length > 0) {
+        console.warn(
+          `⚠️ 人気銘柄のうち${missingWatched.length}件が全銘柄一覧にありません(上場廃止の可能性): ${missingWatched.join(', ')}`
+        );
+      }
+
+      const orderedCodes = [
+        ...watchedCodes,
+        ...buildPrioritizedOrder(allCodes.filter((c) => !watchedSet.has(c))),
+      ];
 
       const watchedResults = [];
 
-      for (const code of orderedCodes) {
+      for (let i = 0; i < orderedCodes.length; i++) {
+        const code = orderedCodes[i];
         try {
           const statements = await withHardTimeout(getCachedStatements(code), 90_000, `statements:${code}`);
-          const latestCloseInfo = await withHardTimeout(getLatestClose(code), 90_000, `price:${code}`);
+          const priceInfo = await withHardTimeout(
+            getPriceInfo(code, getSplitCheckStartDate(statements)),
+            90_000,
+            `price:${code}`
+          );
           warmedCount += 1;
           if (warmedCount % 100 === 0) {
             console.log(`全銘柄キャッシュ進行中: ${warmedCount}/${orderedCodes.length}件`);
@@ -310,8 +379,9 @@ async function warmAllStocksInBackground() {
                 code,
                 listedInfo,
                 statements,
-                latestClose: latestCloseInfo?.price ?? null,
-                priceDate: latestCloseInfo?.date ?? null,
+                latestClose: priceInfo?.price ?? null,
+                priceDate: priceInfo?.date ?? null,
+                splits: priceInfo?.splits ?? [],
               })
             );
           }
@@ -323,16 +393,14 @@ async function warmAllStocksInBackground() {
         // 成功・失敗にかかわらず、1銘柄の処理が完了したことを記録する(ウォッチドッグ用)
         lastProgressAt = Date.now();
 
-        // 人気162銘柄が全部終わった時点で、トップ画面用のfundamentalsCacheを早期に埋める
-        if (watchedResults.length === WATCHED_CODES.length && fundamentalsCache.data.length === 0) {
+        // 人気銘柄をひと通り処理し終えた時点で、トップ画面用のfundamentalsCacheを更新する。
+        // (一部の銘柄の取得に失敗していても、取れた分で更新する)
+        if (i === watchedCodes.length - 1 && watchedResults.length > 0) {
           fundamentalsCache = { data: watchedResults, updatedAt: Date.now() };
-          console.log(`fundamentals更新完了: ${watchedResults.length}件 (${new Date().toLocaleString('ja-JP')})`);
+          console.log(
+            `fundamentals更新完了: ${watchedResults.length}/${WATCHED_CODES.length}件 (${new Date().toLocaleString('ja-JP')})`
+          );
         }
-      }
-
-      // 1周し終えたら、その時点の162銘柄分でfundamentalsCacheも最新化しておく
-      if (watchedResults.length > 0) {
-        fundamentalsCache = { data: watchedResults, updatedAt: Date.now() };
       }
 
       console.log(
@@ -367,14 +435,33 @@ app.get('/api/fundamentals', (req, res) => {
 });
 
 /**
+ * EPS・配当の推移を「今の株数基準」にそろえるための分割情報を取得する。
+ * 株価の取得に失敗した場合は、推移自体は返せるよう補正なし(空配列)で続行する。
+ */
+async function getSplitsForHistory(code, statements) {
+  try {
+    const info = await withHardTimeout(
+      getPriceInfo(code, getHistorySplitCheckStartDate(statements)),
+      30_000,
+      `price:${code}`
+    );
+    return info?.splits ?? [];
+  } catch (err) {
+    console.warn(`⚠️ 銘柄 ${code} の分割情報を取得できなかったため、補正なしで返します:`, err.message);
+    return [];
+  }
+}
+
+/**
  * GET /api/eps-history/:code
- * EPS推移グラフ用に、年度決算からEPSの時系列を返す（最大10年分）。
+ * EPS推移グラフ用に、年度決算からEPSの時系列を返す（最大5年分・株式分割補正済み）。
  */
 app.get('/api/eps-history/:code', async (req, res) => {
   try {
     const { code } = req.params;
     const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
-    const history = mapToEpsHistory(statements, 5);
+    const splits = await getSplitsForHistory(code, statements);
+    const history = mapToEpsHistory(statements, 5, splits);
     res.json(history);
   } catch (err) {
     console.error(err);
@@ -384,13 +471,14 @@ app.get('/api/eps-history/:code', async (req, res) => {
 
 /**
  * GET /api/dividend-history/:code
- * 年間配当(実績)の推移(最大5年分)と、連続増配年数を返す。
+ * 年間配当(実績)の推移(最大5年分・株式分割補正済み)と、連続増配年数を返す。
  */
 app.get('/api/dividend-history/:code', async (req, res) => {
   try {
     const { code } = req.params;
     const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
-    const result = mapToDividendHistory(statements, 5);
+    const splits = await getSplitsForHistory(code, statements);
+    const result = mapToDividendHistory(statements, 5, splits);
     res.json(result);
   } catch (err) {
     console.error(err);
@@ -405,7 +493,7 @@ app.get('/api/dividend-history/:code', async (req, res) => {
 app.get('/api/price/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const { price, date } = await withHardTimeout(getLatestClose(code), 30_000, `price:${code}`);
+    const { price, date } = await withHardTimeout(getPriceInfo(code), 30_000, `price:${code}`);
     res.json({ code, price, date });
   } catch (err) {
     console.error(err);
@@ -439,14 +527,19 @@ app.get('/api/stock/:code', async (req, res) => {
     const { name: knownName, industry: knownIndustry } = req.query;
 
     const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
-    const latestCloseInfo = await withHardTimeout(getLatestClose(code), 30_000, `price:${code}`);
+    const priceInfo = await withHardTimeout(
+      getPriceInfo(code, getSplitCheckStartDate(statements)),
+      30_000,
+      `price:${code}`
+    );
 
     const stock = mapToStockShape({
       code,
       listedInfo: knownName ? { CoName: knownName, S33Nm: knownIndustry } : null,
       statements,
-      latestClose: latestCloseInfo?.price ?? null,
-      priceDate: latestCloseInfo?.date ?? null,
+      latestClose: priceInfo?.price ?? null,
+      priceDate: priceInfo?.date ?? null,
+      splits: priceInfo?.splits ?? [],
     });
 
     res.json(stock);

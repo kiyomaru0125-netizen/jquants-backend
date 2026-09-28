@@ -132,9 +132,26 @@ export async function fetchAllListedStocks() {
   return all;
 }
 
-/** 日次の株価四本値（直近の終値取得に使用）。V1の /prices/daily_quotes に相当 */
-export function fetchDailyQuotes(code, { from, to } = {}) {
-  return jquantsGet('/equities/bars/daily', { code: toJQuantsCode(code), from, to });
+/**
+ * 日次の株価四本値（直近の終値と、株式分割の調整係数の取得に使用）。V1の /prices/daily_quotes に相当。
+ * 分割チェックのため1年以上の期間を取ることがあるので、pagination_keyがあれば続きも取得する。
+ */
+export async function fetchDailyQuotes(code, { from, to } = {}) {
+  const all = [];
+  let paginationKey;
+
+  do {
+    const res = await jquantsGet('/equities/bars/daily', {
+      code: toJQuantsCode(code),
+      from,
+      to,
+      pagination_key: paginationKey,
+    });
+    all.push(...(res.data ?? []));
+    paginationKey = res.pagination_key;
+  } while (paginationKey);
+
+  return { data: all };
 }
 
 /** 財務情報サマリー（EPS・BPS・配当金等）。V1の /fins/statements に相当 */
