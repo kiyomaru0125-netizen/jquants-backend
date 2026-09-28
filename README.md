@@ -26,7 +26,7 @@ npm start
 
 | エンドポイント | 用途 |
 |---|---|
-| `GET /api/fundamentals` | 事前登録した人気銘柄(160銘柄)分のデータ（PER/PBR/EPS/利回り/時価総額など） |
+| `GET /api/fundamentals` | 事前登録した人気銘柄(157銘柄)分のデータ（PER/PBR/EPS/利回り/時価総額など） |
 | `GET /api/listed-stocks` | **東証全銘柄**の一覧（コード・企業名・業種のみの軽量データ） |
 | `GET /api/stock/:code` | 全銘柄の中から選ばれた1銘柄の詳細を、その場で取得(オンデマンド) |
 | `GET /api/eps-history/:code` | 指定銘柄のEPS推移（最大5年分・株式分割補正済み） |
