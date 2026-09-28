@@ -206,6 +206,15 @@ const toIsoDate = (d) => d.toISOString().slice(0, 10);
  * キャッシュは「どの日付までさかのぼって分割を調べたか」も覚えておき、
  * それより古い日付を求められた場合だけ取り直す。
  */
+/**
+ * 株価と分割情報をどこから取るか。銘柄カードは表示のたびに配当推移(連続増配バッジ)も
+ * 取りにくるため、最初から配当・EPS推移(最大5年)に必要な範囲までまとめて取っておく。
+ * こうすると推移のエンドポイントもキャッシュで応答でき、APIの呼び出し回数が増えない。
+ */
+function getPriceCheckStartDate(statements) {
+  return getHistorySplitCheckStartDate(statements) ?? getSplitCheckStartDate(statements);
+}
+
 async function getPriceInfo(code, splitsFrom) {
   const today = new Date();
   const defaultFrom = toIsoDate(new Date(today.getTime() - 10 * DAY_MS));
@@ -359,7 +368,7 @@ async function warmAllStocksInBackground() {
         try {
           const statements = await withHardTimeout(getCachedStatements(code), 90_000, `statements:${code}`);
           const priceInfo = await withHardTimeout(
-            getPriceInfo(code, getSplitCheckStartDate(statements)),
+            getPriceInfo(code, getPriceCheckStartDate(statements)),
             90_000,
             `price:${code}`
           );
@@ -528,7 +537,7 @@ app.get('/api/stock/:code', async (req, res) => {
 
     const statements = await withHardTimeout(getCachedStatements(code), 30_000, `statements:${code}`);
     const priceInfo = await withHardTimeout(
-      getPriceInfo(code, getSplitCheckStartDate(statements)),
+      getPriceInfo(code, getPriceCheckStartDate(statements)),
       30_000,
       `price:${code}`
     );
