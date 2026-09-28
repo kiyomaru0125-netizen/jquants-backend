@@ -118,13 +118,15 @@ export function getLatestSales(statements) {
 
 /**
  * 年何回配当が実施されたかを、四半期ごとの配当実績フィールドの
- * 非ゼロ件数から推定する（簡易ヒューリスティック）。
+ * 非ゼロ件数から推定する（簡易ヒューリスティック）。無配なら0、不明ならnull。
  */
 function estimateDividendFreq(latestAnnual) {
-  if (!latestAnnual) return 2;
+  if (!latestAnnual) return null;
   const quarterFields = [latestAnnual.Div1Q, latestAnnual.Div2Q, latestAnnual.Div3Q, latestAnnual.DivFY];
   const count = quarterFields.filter((v) => toNumber(v) !== null && toNumber(v) > 0).length;
-  return count > 0 ? count : 2;
+  if (count > 0) return count;
+  // 年間配当が0と開示されていれば無配(0回)。何も分からなければnull(不明)
+  return toNumber(latestAnnual.DivAnn) === 0 ? 0 : null;
 }
 
 /**
@@ -155,8 +157,9 @@ export function mapToListedStockShape(record) {
  * ダッシュボード表示用の1オブジェクトに変換する。
  * splits は決算期末以降の株式分割・併合の一覧 [{ date, factor }]。
  * 1株あたりの値と株数は、これを使って今の株数基準に補正する。
+ * 取得できなかった値は0ではなくnullで返す(「0円」「利回り0%」と区別するため)。
  */
-export function mapToStockShape({ code, listedInfo, statements, latestClose, priceDate, splits = [] }) {
+export function mapToStockShape({ code, listedInfo, statements, latestClose, priceDate, prevClose, splits = [] }) {
   const latestAnnual = pickLatestAnnual(statements);
 
   const discFactor = factorSinceDisclosure(splits, latestAnnual);
@@ -204,11 +207,14 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     code,
     name,
     industry,
-    price: price ?? 0,
+    price: price ?? null,
     priceDate: priceDate ?? null,
-    eps: eps ?? 0,
-    bps: bps ?? 0,
-    yieldPct: yieldPct ?? 0,
+    // 前日終値(画面の前日比に使う)
+    prevClose: prevClose ?? null,
+    eps: eps ?? null,
+    bps: bps ?? null,
+    // 無配(配当0円と開示)なら0、配当が分からなければnull
+    yieldPct: yieldPct ?? (price && dividendPerShare === 0 ? 0 : null),
     dividendFreq: estimateDividendFreq(latestAnnual),
     // 売上高(円)。並び替え用途のほか、表示にも使う
     sales: sales ?? null,

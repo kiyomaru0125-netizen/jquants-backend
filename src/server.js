@@ -226,24 +226,25 @@ async function getPriceInfo(code, splitsFrom) {
 
   const cached = priceCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS && cached.coveredFrom <= from) {
-    return cached.value; // { price, date, splits }
+    return cached.value; // { price, date, prevClose, splits }
   }
 
   const data = await jquants.fetchDailyQuotes(code, { from, to: toIsoDate(today) });
   const quotes = data.data ?? [];
 
   // 売買停止などで終値が空の日を飛ばし、値のある直近の日を採用する
-  let price = null;
-  let date = null;
-  for (let i = quotes.length - 1; i >= 0; i--) {
+  // 直近2日分の終値を拾う(1つ目が最新の終値、2つ目が前日比に使う前日終値)
+  const closes = [];
+  for (let i = quotes.length - 1; i >= 0 && closes.length < 2; i--) {
     const raw = quotes[i].C ?? quotes[i].Close;
     const close = Number(raw);
     if (raw != null && raw !== '' && Number.isFinite(close) && close > 0) {
-      price = close;
-      date = quotes[i].Date ?? quotes[i].D ?? null;
-      break;
+      closes.push({ close, date: quotes[i].Date ?? quotes[i].D ?? null });
     }
   }
+  const price = closes[0]?.close ?? null;
+  const date = closes[0]?.date ?? null;
+  const prevClose = closes[1]?.close ?? null;
 
   const splits = [];
   for (const q of quotes) {
@@ -253,7 +254,7 @@ async function getPriceInfo(code, splitsFrom) {
     }
   }
 
-  const value = { price, date, splits };
+  const value = { price, date, prevClose, splits };
   priceCache.set(code, { value, fetchedAt: Date.now(), coveredFrom: from });
   return value;
 }
@@ -391,6 +392,7 @@ async function warmAllStocksInBackground() {
                 statements,
                 latestClose: priceInfo?.price ?? null,
                 priceDate: priceInfo?.date ?? null,
+                prevClose: priceInfo?.prevClose ?? null,
                 splits: priceInfo?.splits ?? [],
               })
             );
@@ -498,13 +500,13 @@ app.get('/api/dividend-history/:code', async (req, res) => {
 
 /**
  * GET /api/price/:code
- * 単一銘柄の直近終値と、それが何営業日分のデータかを返す。
+ * 単一銘柄の直近終値・その日付・前日終値を返す。
  */
 app.get('/api/price/:code', async (req, res) => {
   try {
     const { code } = req.params;
-    const { price, date } = await withHardTimeout(getPriceInfo(code), 30_000, `price:${code}`);
-    res.json({ code, price, date });
+    const { price, date, prevClose } = await withHardTimeout(getPriceInfo(code), 30_000, `price:${code}`);
+    res.json({ code, price, date, prevClose });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -549,6 +551,7 @@ app.get('/api/stock/:code', async (req, res) => {
       statements,
       latestClose: priceInfo?.price ?? null,
       priceDate: priceInfo?.date ?? null,
+      prevClose: priceInfo?.prevClose ?? null,
       splits: priceInfo?.splits ?? [],
     });
 
