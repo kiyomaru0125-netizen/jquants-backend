@@ -120,6 +120,8 @@ const STATEMENT_FIELDS_TO_KEEP = [
   'TA', // 総資産(ROA計算用)
   'OP', // 営業利益(ROIC近似計算用)
   'Eq', // 純資産(ROIC近似計算用)
+  'CA', // 流動資産(流動比率計算用。実レスポンスに含まれるか未確認)
+  'CL', // 流動負債(流動比率計算用。実レスポンスに含まれるか未確認)
   'DivAnn',
   'FDivAnn',
   'Div1Q',

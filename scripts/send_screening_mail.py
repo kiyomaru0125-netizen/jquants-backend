@@ -80,7 +80,7 @@ def build_mail(result):
         "EPSが5年前より増加",
         f"PER {c.get('maxPer')}倍以下 または 業界上位{c.get('industryTopN')}社平均以下",
         f"ROE {c.get('minRoe')}%以上 / ROA {c.get('minRoa')}%以上 / ROIC {c.get('minRoic')}%以上(近似)",
-        f"配当性向 {c.get('maxPayoutRatio')}%以下",
+        f"流動比率 {c.get('minCurrentRatio')}%以上 / 配当性向 {c.get('maxPayoutRatio')}%以下",
         f"◎ = PBR {c.get('goodPbr', 1):.2f}倍以下",
     ]
     not_checked = result.get("notChecked", [])
@@ -99,7 +99,8 @@ def build_mail(result):
             )
             text.append(
                 f"  ROE {fmt(m.get('roe'), '%')} / ROA {fmt(m.get('roa'), '%')} / ROIC {fmt(m.get('roic'), '%')} / "
-                f"配当性向 {fmt(m.get('payoutRatio'), '%')} / EPS {fmt(eps_from.get('eps'), '円', 1)}({eps_from.get('year', '?')}年)→{fmt(m.get('eps'), '円', 1)}"
+                f"流動比率 {fmt(m.get('currentRatio'), '%')} / 配当性向 {fmt(m.get('payoutRatio'), '%')} / "
+                f"EPS {fmt(eps_from.get('eps'), '円', 1)}({eps_from.get('year', '?')}年)→{fmt(m.get('eps'), '円', 1)}"
             )
             text.append("")
     else:
@@ -128,6 +129,7 @@ def build_mail(result):
             f"<span style='color:#888;font-size:12px'>業界 {fmt(m.get('industryPer'), '倍')}</span></td>"
             f"<td style='padding:6px;border-bottom:1px solid #ddd;text-align:right'>{fmt(m.get('pbr'), '倍')}</td>"
             f"<td style='padding:6px;border-bottom:1px solid #ddd;text-align:right'>{fmt(m.get('roe'), '%')} / {fmt(m.get('roa'), '%')} / {fmt(m.get('roic'), '%')}</td>"
+            f"<td style='padding:6px;border-bottom:1px solid #ddd;text-align:right'>{fmt(m.get('currentRatio'), '%')}</td>"
             f"<td style='padding:6px;border-bottom:1px solid #ddd;text-align:right'>{fmt(m.get('payoutRatio'), '%')}</td>"
             f"<td style='padding:6px;border-bottom:1px solid #ddd;text-align:right'>{fmt(eps_from.get('eps'), '', 1)}→{fmt(m.get('eps'), '', 1)}<br>"
             f"<span style='color:#888;font-size:12px'>{esc(str(eps_from.get('year', '?')))}年〜</span></td>"
@@ -138,7 +140,7 @@ def build_mail(result):
         "<table style='border-collapse:collapse;font-size:13px;width:100%'>"
         f"<tr><th style='padding:6px;border-bottom:2px solid #333;text-align:left;font-size:12px'>銘柄</th>"
         f"<th {th}>株価</th><th {th}>利回り</th><th {th}>PER</th><th {th}>PBR</th>"
-        f"<th {th}>ROE/ROA/ROIC</th><th {th}>配当性向</th><th {th}>EPS</th></tr>"
+        f"<th {th}>ROE/ROA/ROIC</th><th {th}>流動比率</th><th {th}>配当性向</th><th {th}>EPS</th></tr>"
         + "".join(rows)
         + "</table>"
         if matches

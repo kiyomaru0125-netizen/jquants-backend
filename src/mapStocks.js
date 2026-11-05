@@ -204,6 +204,15 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     dividendPerShare !== null && eps !== null && eps > 0
       ? Number(((dividendPerShare / eps) * 100).toFixed(1))
       : null;
+  // 流動比率 = 流動資産 ÷ 流動負債 × 100
+  // CA/CLが決算サマリーのレスポンスに実在するかは未確認(screening.jsのrunScreeningが
+  // クロール結果全体でのデータ有無を見て、無ければ判定条件から自動的に除外する)
+  const currentAssets = toNumber(latestAnnual?.CA);
+  const currentLiabilities = toNumber(latestAnnual?.CL);
+  const currentRatio =
+    currentAssets !== null && currentLiabilities
+      ? Number(((currentAssets / currentLiabilities) * 100).toFixed(1))
+      : null;
 
   const shOutFY = toNumber(latestAnnual?.ShOutFY);
   const trShFY = toNumber(latestAnnual?.TrShFY);
@@ -239,6 +248,7 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     roa: roa,
     roic: roic,
     payoutRatio: payoutRatio,
+    currentRatio: currentRatio,
     // J-Quantsは株数を「株」単位で返すため、ダッシュボード側の「百万株」単位に変換
     sharesOutstanding: sharesOutstandingRaw ? Math.round(sharesOutstandingRaw / 1_000_000) : null,
   };
