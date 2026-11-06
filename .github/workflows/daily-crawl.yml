@@ -1,0 +1,41 @@
+name: Daily full stock crawl for screening
+
+# 東証全銘柄をクロールしてスクリーニング結果をdata/screening.jsonに書き出し、コミットする。
+# Renderのバックエンド(常時稼働、スリープで状態が消える)とは独立して動くため、
+# 18時のメール通知(daily-screening.yml)の信頼性がRenderの可用性に左右されなくなる。
+# レート制限を守りながら全銘柄(約4,400銘柄)を回すと2.5〜3時間程度かかるため、
+# 18時のメール通知に十分間に合うよう朝のうちに開始する。
+
+on:
+  schedule:
+    # 平日 09:00(日本時間) = 00:00(UTC)
+    - cron: '0 0 * * 1-5'
+  workflow_dispatch: {} # 手動実行用のボタン(動作確認に使う)
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300 # クロールがハングした場合に備えた上限(通常は3時間程度で終わる)
+    permissions:
+      contents: write # data/screening.jsonをcommitするために必要
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run full crawl
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+        run: node scripts/run_screening_crawl.mjs
+      - name: Commit screening result
+        run: |
+          if [ -n "$(git status --porcelain -- data/screening.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/screening.json
+            git commit -m "chore: update screening.json"
+            git push
+          else
+            echo "変化なし(コミットしない)"
+          fi

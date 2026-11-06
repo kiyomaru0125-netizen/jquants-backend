@@ -2,12 +2,18 @@
 高配当株スクリーニングの結果をメールで送るスクリプト。
 GitHub Actions(.github/workflows/daily-screening.yml)から毎営業日に実行される。
 
+判定結果は、同じ日の早い時間帯に別のワークフロー(daily-crawl.yml →
+scripts/run_screening_crawl.mjs)が東証全銘柄をクロールして data/screening.json に
+書き出し、リポジトリにコミットしたものを読む(このスクリプトは外部サーバーには
+アクセスしない)。以前はRenderのバックエンドにHTTPで問い合わせていたが、Render無料
+プランのスリープ/再起動でキャッシュが消え判定が不安定になる問題があったため、
+クロール自体をGitHub Actions側で完結させる構成に変更した。
+
 必要な環境変数(GitHubの「Secrets」に登録する):
   GMAIL_USER          送信に使うGmailアドレス
   GMAIL_APP_PASSWORD  そのGmailの「アプリパスワード」(16文字)
   MAIL_TO             送り先(省略時は GMAIL_USER)
 任意:
-  SCREEN_URL          判定結果のURL(省略時はRenderのバックエンド)
   DRY_RUN=1           送信せず、メール本文を mail_preview.html に書き出す(動作確認用。
                       前回結果ファイルの更新もしない)
 
@@ -21,20 +27,21 @@ import html
 import json
 import os
 import smtplib
-import sys
-import time
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-SCREEN_URL = os.environ.get("SCREEN_URL", "https://jquants-backend.onrender.com/api/screen")
 JST = timezone(timedelta(hours=9))
-# 判定済みの銘柄がこの割合を下回るときは「サーバー再起動直後で判定が途中」と注意書きを出す
+# クロール結果(data/screening.json)の生成日がこれより古い場合、クロールが失敗した
+# 可能性があるとみなして注意書きを出す
+STALE_WARNING_HOURS = 30
+# 判定できた銘柄数がこの割合を下回るときは「一部取得できていないかもしれない」と注意書きを出す
 COVERAGE_WARNING_RATIO = 0.9
 SITE_URL = "https://sprightly-youtiao-91ad2f.netlify.app/"
-LAST_MATCHES_PATH = Path(__file__).resolve().parent.parent / "data" / "last_matches.json"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SCREENING_PATH = DATA_DIR / "screening.json"
+LAST_MATCHES_PATH = DATA_DIR / "last_matches.json"
 
 
 def load_previous_codes(path=LAST_MATCHES_PATH):
@@ -53,18 +60,34 @@ def save_current_codes(codes, path=LAST_MATCHES_PATH):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def fetch_screening():
-    """Renderがスリープから起きるまで時間がかかることがあるので、数回やり直す"""
-    last_error = None
-    for attempt in range(6):
-        try:
-            with urllib.request.urlopen(SCREEN_URL, timeout=90) as res:
-                return json.loads(res.read().decode("utf-8"))
-        except Exception as e:  # noqa: BLE001
-            last_error = e
-            print(f"取得失敗({attempt + 1}回目): {e}", file=sys.stderr)
-            time.sleep(20)
-    raise RuntimeError(f"判定結果を取得できませんでした: {last_error}")
+def load_screening(path=SCREENING_PATH):
+    """daily-crawl.ymlがコミットしたクロール結果を読む。無ければcrawlがまだ一度も
+    成功していない(初回セットアップ直後など)ので、分かりやすいエラーにする。"""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"{path} が見つかりません。daily-crawl.ymlがまだ一度も成功していない可能性があります。"
+        ) from e
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"{path} の内容が壊れています: {e}") from e
+
+
+def staleness_note(result):
+    """クロール結果の生成日時が古すぎる(=daily-crawlが失敗し続けている)場合に注意書きを返す"""
+    generated_at = result.get("generatedAt")
+    if not generated_at:
+        return "判定結果の生成日時が記録されていません。"
+    try:
+        generated = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    except ValueError:
+        return "判定結果の生成日時を解釈できませんでした。"
+
+    age_hours = (datetime.now(timezone.utc) - generated).total_seconds() / 3600
+    if age_hours > STALE_WARNING_HOURS:
+        local = generated.astimezone(JST).strftime("%m/%d %H:%M")
+        return f"クロール結果が古い可能性があります(生成日時: {local} JST)。daily-crawl.ymlの実行状況を確認してください。"
+    return None
 
 
 def fmt(value, suffix="", digits=None):
@@ -102,10 +125,12 @@ def build_mail(result, previous_codes=None):
         dropped = sorted(previous_codes - current_codes)
 
     notes = []
+    stale_note = staleness_note(result)
+    if stale_note:
+        notes.append(stale_note)
     if total and screened < total * COVERAGE_WARNING_RATIO:
         notes.append(
-            f"サーバー再起動直後のため、判定できたのは {screened:,} / {total:,} 銘柄のみです。"
-            "残りは次回以降に判定されます。"
+            f"クロールできたのは {screened:,} / {total:,} 銘柄のみです(一部の銘柄取得に失敗した可能性があります)。"
         )
 
     criteria_lines = [
@@ -245,7 +270,7 @@ def send(subject, text, body_html):
 
 
 def main():
-    result = fetch_screening()
+    result = load_screening()
     previous_codes = load_previous_codes()
     subject, text, body_html = build_mail(result, previous_codes)
     if os.environ.get("DRY_RUN") == "1":

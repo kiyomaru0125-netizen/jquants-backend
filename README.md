@@ -32,7 +32,7 @@ npm start
 | `GET /api/eps-history/:code` | 指定銘柄のEPS推移（最大5年分・株式分割補正済み） |
 | `GET /api/dividend-history/:code` | 指定銘柄の年間配当の推移（最大5年分・株式分割補正済み）と連続増配年数 |
 | `GET /api/price/:code` | 指定銘柄の直近終値のみ |
-| `GET /api/screen` | 高配当株の条件判定の結果(毎日のメール通知用) |
+| `GET /api/screen` | Render側キャッシュに対する高配当株の条件判定結果(参考用。毎日のメール通知はGitHub Actionsで完結しておりこのエンドポイントには依存しない) |
 | `GET /health` | 死活監視用 |
 
 ## フロントエンド（StockDashboard.jsx）側の差し替えイメージ
@@ -106,27 +106,49 @@ useEffect(() => {
 
 平日18時(日本時間)に、全条件を満たす銘柄をメールで送ります(0件の日も「該当なし」と届きます)。
 
+### アーキテクチャ(GitHub Actions完結・Renderに依存しない)
+
+クロールとメール送信は2つの独立したワークフローに分かれています。
+
+1. **`daily-crawl.yml`**(平日9時JST): `scripts/run_screening_crawl.mjs` が東証全銘柄をJ-Quants APIから
+   直接クロールし、判定条件の結果を `data/screening.json` に書き出してコミットする。全銘柄(約4,400銘柄)
+   を回すのに2.5〜3時間程度かかるため、18時のメールに十分間に合うよう朝のうちに実行する。
+2. **`daily-screening.yml`**(平日18時JST): `scripts/send_screening_mail.py` が `data/screening.json`
+   を読んでメールを組み立て、送信する。こちらはJ-Quants APIにもRenderにもアクセスしない軽量な処理。
+
+以前はRenderの常時稼働バックエンド(`src/server.js`)が持つインメモリキャッシュにメール送信時点で
+問い合わせる構成だったが、Render無料プランはアイドル時にスリープし、キャッシュが消えると再クロールに
+数時間かかるため、メール送信のタイミングで判定が不完全になることがあった。クロールをGitHub Actions側
+で完結させることで、メール通知の信頼性がRenderの可用性に左右されなくなる(Renderは引き続きダッシュボード
+用の `/api/fundamentals` 等のために稼働している)。
+
 - 判定条件: `src/screening.js` の `CRITERIA`(数値を変えたい場合はここだけ直す)
-- 送信: `.github/workflows/daily-screening.yml` → `scripts/send_screening_mail.py`
+- クロール・判定ロジック本体(`src/fetchStockData.js`・`src/mapStocks.js`・`src/screening.js`)は
+  Renderのサーバーとバッチスクリプトの両方から共有しているため、二重実装にはなっていない。
 - ROICは「営業利益×(1−30%)÷純資産」の近似値(決算サマリーに有利子負債が無いため)。借入の多い会社は高めに出ます。
 - ROE・ROA・ROICは特別損益で単年度の数値がぶれやすいため、直近最大3期分の年度ごとの比率を平均しています(データが1期分しか無い銘柄はその1期のみ)。
 - 流動比率(流動資産÷流動負債)は`CA`/`CL`フィールドから計算しますが、これらが実際の決算サマリーの
-  レスポンスに含まれるかは未確認です。クロール結果全体でほとんど取得できていない場合は、サーバー側が
+  レスポンスに含まれるかは未確認です。クロール結果全体でほとんど取得できていない場合は、
   自動的にこの条件を判定から外します(メールの「判定していない条件」に表示されます)。実際に取得できて
   いれば自動的に判定へ組み込まれます。
-- サーバー再起動直後は全銘柄の判定が終わっていないため、メールに「判定できたのは N / M 銘柄のみ」と注意書きが出ます。
+- クロールが一部の銘柄で失敗した場合は「クロールできたのは N / M 銘柄のみ」、クロール自体が長時間
+  失敗し続けている場合は「クロール結果が古い可能性があります」という注意書きがメールに出ます。
 - 全条件のうち1つだけ満たせなかった「惜しい銘柄」も、該当銘柄とは別枠で最大20件メールに表示します。
 - 前回実行時との差分(新規に該当/該当から外れた銘柄)も表示します。前回の該当銘柄一覧は
   `data/last_matches.json` にコミットして持ち回っており、メール送信後にワークフローが自動更新します。
 
 ### 初回設定(GitHubのSecrets)
 
-リポジトリの Settings → Secrets and variables → Actions → New repository secret で次の3つを登録します。
+リポジトリの Settings → Secrets and variables → Actions → New repository secret で次の4つを登録します。
 
 | 名前 | 値 |
 |---|---|
+| `JQUANTS_API_KEY` | J-Quantsのダッシュボードで発行したAPIキー(Renderの環境変数と同じ値でよい) |
 | `GMAIL_USER` | 送信に使うGmailアドレス |
 | `GMAIL_APP_PASSWORD` | Gmailのアプリパスワード(Googleアカウント → セキュリティ → 2段階認証 → アプリパスワード) |
 | `MAIL_TO` | 送り先のアドレス(複数ならカンマ区切り) |
 
-登録後、Actions → 「Daily high-dividend screening mail」→「Run workflow」で手動送信して確認できます。
+登録後、Actions →「Daily full stock crawl for screening」を手動実行(Run workflow)してクロールを
+一度走らせ、`data/screening.json` がコミットされるのを確認してください。その後、
+「Daily high-dividend screening mail」を手動実行すればメール送信を確認できます(クロール未実行だと
+`data/screening.json` が無くエラーになります)。

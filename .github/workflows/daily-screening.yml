@@ -1,5 +1,8 @@
 name: Daily high-dividend screening mail
 
+# data/screening.json(daily-crawl.ymlが朝のうちにコミットしたクロール結果)を読んでメールを送る。
+# このワークフロー自体はJ-Quants APIにもRenderにもアクセスしない(軽量)。
+
 on:
   schedule:
     # 平日 18:00(日本時間) = 09:00(UTC)。GitHub側の都合で数分〜数十分遅れることがあります
