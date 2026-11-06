@@ -12,6 +12,7 @@ import {
   getHistorySplitCheckStartDate,
 } from './mapStocks.js';
 import { runScreening } from './screening.js';
+import { fetchCompactStatements, fetchPriceInfo as fetchPriceInfoRaw, computePriceFromDate } from './fetchStockData.js';
 
 const app = express();
 
@@ -108,47 +109,12 @@ async function refreshListedStocksInBackground() {
 const statementsCache = new Map(); // code -> { statements, fetchedAt }
 const STATEMENTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24時間(決算情報は頻繁には変わらないため)
 
-// mapToStockShape・mapToEpsHistory・getLatestSalesが実際に読んでいるフィールドのみ残す
-const STATEMENT_FIELDS_TO_KEEP = [
-  'CurPerType',
-  'DiscDate',
-  'CurFYEn',
-  'EPS',
-  'BPS',
-  'Sales',
-  'NP', // 純利益(ROA計算用)
-  'TA', // 総資産(ROA計算用)
-  'OP', // 営業利益(ROIC近似計算用)
-  'Eq', // 純資産(ROIC近似計算用)
-  'DivAnn',
-  'FDivAnn',
-  'Div1Q',
-  'Div2Q',
-  'Div3Q',
-  'DivFY',
-  'ShOutFY',
-  'TrShFY',
-];
-
-function compactStatements(records) {
-  return records
-    .filter((r) => r.CurPerType === 'FY') // 年度決算のみ(四半期の生データは不要)
-    .map((r) => {
-      const compact = {};
-      for (const key of STATEMENT_FIELDS_TO_KEEP) {
-        if (r[key] !== undefined) compact[key] = r[key];
-      }
-      return compact;
-    });
-}
-
 async function getCachedStatements(code) {
   const cached = statementsCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < STATEMENTS_CACHE_TTL_MS) {
     return cached.statements;
   }
-  const res = await jquants.fetchStatements(code);
-  const statements = compactStatements(res.data ?? []);
+  const statements = await fetchCompactStatements(code);
   statementsCache.set(code, { statements, fetchedAt: Date.now() });
   return statements;
 }
@@ -198,9 +164,6 @@ function withHardTimeout(promise, ms, label) {
   });
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const toIsoDate = (d) => d.toISOString().slice(0, 10);
-
 /**
  * 直近終値と、指定日以降の株式分割(併合)の一覧を返す。
  *   splitsFrom: 分割を調べ始める日付(YYYY-MM-DD)。決算期末の少し前を渡す。
@@ -220,45 +183,15 @@ function getPriceCheckStartDate(statements) {
 }
 
 async function getPriceInfo(code, splitsFrom) {
-  const today = new Date();
-  const defaultFrom = toIsoDate(new Date(today.getTime() - 10 * DAY_MS));
-  // Lightプランで取得できるのは過去5年分のため、それより前は求めない
-  const oldestAllowed = toIsoDate(new Date(today.getTime() - (5 * 365 - 7) * DAY_MS));
-  let from = splitsFrom && splitsFrom < defaultFrom ? splitsFrom : defaultFrom;
-  if (from < oldestAllowed) from = oldestAllowed;
+  const from = computePriceFromDate(splitsFrom);
 
   const cached = priceCache.get(code);
   if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS && cached.coveredFrom <= from) {
     return cached.value; // { price, date, prevClose, splits }
   }
 
-  const data = await jquants.fetchDailyQuotes(code, { from, to: toIsoDate(today) });
-  const quotes = data.data ?? [];
-
-  // 売買停止などで終値が空の日を飛ばし、値のある直近の日を採用する
-  // 直近2日分の終値を拾う(1つ目が最新の終値、2つ目が前日比に使う前日終値)
-  const closes = [];
-  for (let i = quotes.length - 1; i >= 0 && closes.length < 2; i--) {
-    const raw = quotes[i].C ?? quotes[i].Close;
-    const close = Number(raw);
-    if (raw != null && raw !== '' && Number.isFinite(close) && close > 0) {
-      closes.push({ close, date: quotes[i].Date ?? quotes[i].D ?? null });
-    }
-  }
-  const price = closes[0]?.close ?? null;
-  const date = closes[0]?.date ?? null;
-  const prevClose = closes[1]?.close ?? null;
-
-  const splits = [];
-  for (const q of quotes) {
-    const factor = Number(q.AdjFactor ?? q.AdjustmentFactor);
-    if (Number.isFinite(factor) && factor > 0 && factor !== 1) {
-      splits.push({ date: q.Date ?? q.D, factor });
-    }
-  }
-
-  const value = { price, date, prevClose, splits };
-  priceCache.set(code, { value, fetchedAt: Date.now(), coveredFrom: from });
+  const { coveredFrom, ...value } = await fetchPriceInfoRaw(code, splitsFrom);
+  priceCache.set(code, { value, fetchedAt: Date.now(), coveredFrom });
   return value;
 }
 

@@ -10,7 +10,10 @@
 //   ② ROA 10%以上
 //   ③ ROIC 10%以上 (近似値。mapStocks.js の計算方法を参照)
 // STEP③
-//   ① 流動比率 150%以上 … 決算サマリーにデータが無いため判定していない
+//   ① 流動比率 150%以上 … CA(流動資産)/CL(流動負債)が決算サマリーの実レスポンスに
+//      含まれているかどうか未確認。runScreening がクロール結果全体でのデータ充足率を見て、
+//      ほとんど取得できていなければ自動的に判定条件から外す(notCheckedに記載)。
+//      取得できていれば自動的に判定へ組み込まれる。
 //   ② 配当性向 40%以下
 //
 // 条件の数値を変えたい場合は、下の CRITERIA だけ直せばよい。
@@ -23,9 +26,13 @@ export const CRITERIA = {
   minRoe: 12,
   minRoa: 10,
   minRoic: 10,
+  minCurrentRatio: 150,
   maxPayoutRatio: 40,
   // EPS推移の比較に最低限必要な年数(これより短いと「5年前より増えている」を判断しない)
   minEpsYears: 3,
+  // 流動比率のデータが取れている銘柄の割合がこれを下回る場合、判定条件から除外する
+  // (決算サマリーにCA/CLが無いケースを「全銘柄不合格」にしてしまわないためのガード)
+  currentRatioCoverageThreshold: 0.05,
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -65,9 +72,10 @@ function pbr(stock) {
 /**
  * 1銘柄を判定する。
  * record: { stock, epsHistory } / industryPer: その銘柄の業界の上位平均PER(無ければnull)
+ * options.currentRatioAvailable: falseなら流動比率は判定対象から外し、常にok扱いにする
  * 戻り値: { passed, checks: [{ key, label, ok, value }], ... }
  */
-export function evaluateStock({ stock, epsHistory }, industryPer) {
+export function evaluateStock({ stock, epsHistory }, industryPer, { currentRatioAvailable = true } = {}) {
   const stockPer = per(stock);
   const stockPbr = pbr(stock);
   const epsFirst = epsHistory?.[0] ?? null;
@@ -87,6 +95,13 @@ export function evaluateStock({ stock, epsHistory }, industryPer) {
     { key: 'roe', label: `ROE${CRITERIA.minRoe}%以上`, ok: isNum(stock.roe) && stock.roe >= CRITERIA.minRoe, value: stock.roe },
     { key: 'roa', label: `ROA${CRITERIA.minRoa}%以上`, ok: isNum(stock.roa) && stock.roa >= CRITERIA.minRoa, value: stock.roa },
     { key: 'roic', label: `ROIC${CRITERIA.minRoic}%以上(近似)`, ok: isNum(stock.roic) && stock.roic >= CRITERIA.minRoic, value: stock.roic },
+    {
+      key: 'currentRatio',
+      label: `流動比率${CRITERIA.minCurrentRatio}%以上`,
+      // データが全体的に取れていない(currentRatioAvailable=false)場合は判定しない(常にok)
+      ok: currentRatioAvailable ? isNum(stock.currentRatio) && stock.currentRatio >= CRITERIA.minCurrentRatio : true,
+      value: stock.currentRatio,
+    },
     { key: 'payout', label: `配当性向${CRITERIA.maxPayoutRatio}%以下`, ok: isNum(stock.payoutRatio) && stock.payoutRatio <= CRITERIA.maxPayoutRatio, value: stock.payoutRatio },
   ];
 
@@ -100,52 +115,82 @@ export function evaluateStock({ stock, epsHistory }, industryPer) {
   };
 }
 
+/** evaluateStockの結果(1銘柄分)をメール/API向けの表示用オブジェクトに変換する */
+function toResultShape(record, result) {
+  const s = record.stock;
+  return {
+    code: s.code,
+    name: s.name,
+    industry: s.industry,
+    price: s.price,
+    priceDate: s.priceDate,
+    yieldPct: s.yieldPct,
+    dividendFreq: s.dividendFreq,
+    eps: s.eps,
+    epsFrom: result.checks.find((c) => c.key === 'eps').value?.from ?? null,
+    per: result.per,
+    industryPer: result.industryPer,
+    pbr: result.pbr,
+    goodPbr: result.goodPbr,
+    roe: s.roe,
+    roa: s.roa,
+    roic: s.roic,
+    currentRatio: s.currentRatio,
+    payoutRatio: s.payoutRatio,
+  };
+}
+
 /**
  * キャッシュ済みの全銘柄を判定し、全条件を満たした銘柄を利回りの高い順に返す。
+ * あと1条件だけ満たせなかった銘柄も「惜しい銘柄」として別途返す(条件が厳しく0件になりやすいため、
+ * どこまで近づいているかの参考情報として)。
  * records: Map<code, { stock, epsHistory }>
  */
 export function runScreening(records, { totalListed = null } = {}) {
   const list = [...records.values()];
   const industryPers = industryAveragePer(list);
 
+  // 流動比率(CA/CL)が実際のレスポンスにどれだけ含まれているかをクロール結果全体から判定する。
+  // ほとんど取得できていない場合は「決算サマリーにデータが無い」とみなし、この条件を
+  // 判定から除外する(全銘柄が不合格になってしまうのを防ぐ)。取得できていれば自動的に
+  // 判定へ組み込まれる。
+  const withCurrentRatio = list.filter((r) => isNum(r.stock.currentRatio)).length;
+  const currentRatioAvailable =
+    list.length > 0 && withCurrentRatio / list.length >= CRITERIA.currentRatioCoverageThreshold;
+
   const matches = [];
-  const stepCounts = { yield: 0, eps: 0, per: 0, roe: 0, roa: 0, roic: 0, payout: 0 };
+  const nearMisses = [];
+  const stepCounts = { yield: 0, eps: 0, per: 0, roe: 0, roa: 0, roic: 0, currentRatio: 0, payout: 0 };
   for (const record of list) {
-    const result = evaluateStock(record, industryPers.get(record.stock.industry) ?? null);
+    const result = evaluateStock(record, industryPers.get(record.stock.industry) ?? null, {
+      currentRatioAvailable,
+    });
     for (const c of result.checks) if (c.ok) stepCounts[c.key] += 1;
+
     if (result.passed) {
-      const s = record.stock;
-      matches.push({
-        code: s.code,
-        name: s.name,
-        industry: s.industry,
-        price: s.price,
-        priceDate: s.priceDate,
-        yieldPct: s.yieldPct,
-        dividendFreq: s.dividendFreq,
-        eps: s.eps,
-        epsFrom: result.checks.find((c) => c.key === 'eps').value?.from ?? null,
-        per: result.per,
-        industryPer: result.industryPer,
-        pbr: result.pbr,
-        goodPbr: result.goodPbr,
-        roe: s.roe,
-        roa: s.roa,
-        roic: s.roic,
-        payoutRatio: s.payoutRatio,
-      });
+      matches.push(toResultShape(record, result));
+      continue;
+    }
+
+    const failedChecks = result.checks.filter((c) => !c.ok);
+    // 他の条件はすべて満たしているが、1つだけ惜しく届かなかった銘柄
+    if (failedChecks.length === 1) {
+      nearMisses.push({ ...toResultShape(record, result), missedCheck: failedChecks[0] });
     }
   }
 
   matches.sort((a, b) => (b.yieldPct ?? 0) - (a.yieldPct ?? 0));
+  nearMisses.sort((a, b) => (b.yieldPct ?? 0) - (a.yieldPct ?? 0));
 
   return {
     generatedAt: new Date().toISOString(),
     criteria: CRITERIA,
-    notChecked: ['流動比率150%以上(決算サマリーにデータが無いため)'],
-    coverage: { screened: list.length, totalListed },
+    notChecked: currentRatioAvailable ? [] : ['流動比率150%以上(決算サマリーにデータが無いため)'],
+    coverage: { screened: list.length, totalListed, currentRatio: withCurrentRatio },
     // 各条件を単独で満たした銘柄数(条件が厳しすぎないかの目安)
     passCounts: stepCounts,
     matches,
+    // あと1条件だけ満たせなかった銘柄(利回り順、最大20件)
+    nearMisses: nearMisses.slice(0, 20),
   };
 }

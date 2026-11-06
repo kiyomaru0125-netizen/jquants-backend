@@ -20,6 +20,41 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * ROE・ROA・ROICは特別利益/損失が出た年度1期分だけで判定すると数値がぶれやすいため、
+ * 直近複数年度(最大years年、重複開示は最新のみ使う)の「年度ごとの比率」を平均して使う。
+ * 分子・分母はどちらも同じ年度の開示値なので、株式分割の補正は不要(比率は分割の影響を受けない)。
+ * データが1年分しか無ければその1年の値を、全く無ければnullを返す。
+ */
+function averageRatioPct(annualStatements, numeratorKey, denominatorKey, years = 3) {
+  const usable = annualStatements.filter((s) => {
+    const num = toNumber(s[numeratorKey]);
+    const den = toNumber(s[denominatorKey]);
+    return num !== null && den !== null && den !== 0;
+  });
+  const byYear = dedupeByYear(usable);
+  const recentYears = [...byYear.entries()].sort((a, b) => b[0] - a[0]).slice(0, years);
+  if (recentYears.length === 0) return null;
+
+  const ratios = recentYears.map(([, s]) => (toNumber(s[numeratorKey]) / toNumber(s[denominatorKey])) * 100);
+  return Number((ratios.reduce((a, b) => a + b, 0) / ratios.length).toFixed(1));
+}
+
+/** ROIC近似(NOPAT ÷ 純資産 × 100)を直近複数年度で平均する。averageRatioPctのROIC専用版(税引後調整が要るため別関数) */
+function averageNopatToEquityPct(annualStatements, years) {
+  const usable = annualStatements.filter((s) => {
+    const op = toNumber(s.OP);
+    const eq = toNumber(s.Eq);
+    return op !== null && eq !== null && eq !== 0;
+  });
+  const byYear = dedupeByYear(usable);
+  const recentYears = [...byYear.entries()].sort((a, b) => b[0] - a[0]).slice(0, years);
+  if (recentYears.length === 0) return null;
+
+  const ratios = recentYears.map(([, s]) => ((toNumber(s.OP) * (1 - ROIC_TAX_RATE)) / toNumber(s.Eq)) * 100);
+  return Number((ratios.reduce((a, b) => a + b, 0) / ratios.length).toFixed(1));
+}
+
 // ---------------------------------------------------------------------------
 // 株式分割(併合)の補正
 //
@@ -162,7 +197,11 @@ export function mapToListedStockShape(record) {
  * 1株あたりの値と株数は、これを使って今の株数基準に補正する。
  * 取得できなかった値は0ではなくnullで返す(「0円」「利回り0%」と区別するため)。
  */
+/** ROE・ROA・ROICの平均に使う最大年数(直近何期分をならすか) */
+const RATIO_AVERAGE_YEARS = 3;
+
 export function mapToStockShape({ code, listedInfo, statements, latestClose, priceDate, prevClose, splits = [] }) {
+  const annual = extractAnnualStatements(statements);
   const latestAnnual = pickLatestAnnual(statements);
 
   const discFactor = factorSinceDisclosure(splits, latestAnnual);
@@ -186,23 +225,27 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
   const netProfit = toNumber(latestAnnual?.NP);
   const totalAssets = toNumber(latestAnnual?.TA);
 
-  // ROE(自己資本利益率) = EPS ÷ BPS × 100 (1株あたりで計算しているだけで、NP÷Eqと同義)
-  const roe = eps !== null && bps ? Number(((eps / bps) * 100).toFixed(1)) : null;
-  // ROA(総資産利益率) = 純利益 ÷ 総資産 × 100
-  const roa = netProfit !== null && totalAssets ? Number(((netProfit / totalAssets) * 100).toFixed(1)) : null;
-  // ROIC(近似) = 営業利益 × (1 − 税率30%) ÷ 純資産 × 100
+  // ROE(自己資本利益率)・ROA(総資産利益率)は特別損益で単年度の数値がぶれやすいため、
+  // 直近最大RATIO_AVERAGE_YEARS期分の「EPS÷BPS」「純利益÷総資産」の平均を使う(1年分しか無ければその年のみ)。
+  const roe = averageRatioPct(annual, 'EPS', 'BPS', RATIO_AVERAGE_YEARS);
+  const roa = averageRatioPct(annual, 'NP', 'TA', RATIO_AVERAGE_YEARS);
+  // ROIC(近似) = 営業利益 × (1 − 税率30%) ÷ 純資産 × 100 を直近最大RATIO_AVERAGE_YEARS期分平均。
   // 本来の分母は「純資産 + 有利子負債」だが、決算サマリーに有利子負債が無いため純資産で代用している。
   // そのため借入の多い会社ほど実際より高く出る点に注意。
-  const operatingProfit = toNumber(latestAnnual?.OP);
-  const equity = toNumber(latestAnnual?.Eq);
-  const roic =
-    operatingProfit !== null && equity && equity > 0
-      ? Number((((operatingProfit * (1 - ROIC_TAX_RATE)) / equity) * 100).toFixed(1))
-      : null;
+  const roic = averageNopatToEquityPct(annual, RATIO_AVERAGE_YEARS);
   // 配当性向 = 1株配当 ÷ EPS × 100 (EPSが赤字・ゼロの場合は計算しない)
   const payoutRatio =
     dividendPerShare !== null && eps !== null && eps > 0
       ? Number(((dividendPerShare / eps) * 100).toFixed(1))
+      : null;
+  // 流動比率 = 流動資産 ÷ 流動負債 × 100
+  // CA/CLが決算サマリーのレスポンスに実在するかは未確認(screening.jsのrunScreeningが
+  // クロール結果全体でのデータ有無を見て、無ければ判定条件から自動的に除外する)
+  const currentAssets = toNumber(latestAnnual?.CA);
+  const currentLiabilities = toNumber(latestAnnual?.CL);
+  const currentRatio =
+    currentAssets !== null && currentLiabilities
+      ? Number(((currentAssets / currentLiabilities) * 100).toFixed(1))
       : null;
 
   const shOutFY = toNumber(latestAnnual?.ShOutFY);
@@ -239,6 +282,7 @@ export function mapToStockShape({ code, listedInfo, statements, latestClose, pri
     roa: roa,
     roic: roic,
     payoutRatio: payoutRatio,
+    currentRatio: currentRatio,
     // J-Quantsは株数を「株」単位で返すため、ダッシュボード側の「百万株」単位に変換
     sharesOutstanding: sharesOutstandingRaw ? Math.round(sharesOutstandingRaw / 1_000_000) : null,
   };
