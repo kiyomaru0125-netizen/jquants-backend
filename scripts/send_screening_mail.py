@@ -8,7 +8,12 @@ GitHub Actions(.github/workflows/daily-screening.yml)から毎営業日に実行
   MAIL_TO             送り先(省略時は GMAIL_USER)
 任意:
   SCREEN_URL          判定結果のURL(省略時はRenderのバックエンド)
-  DRY_RUN=1           送信せず、メール本文を mail_preview.html に書き出す(動作確認用)
+  DRY_RUN=1           送信せず、メール本文を mail_preview.html に書き出す(動作確認用。
+                      前回結果ファイルの更新もしない)
+
+前日との差分(新規に該当/該当から外れた銘柄)を表示するため、前回の該当銘柄一覧を
+data/last_matches.json にコミットして持ち回る。ワークフロー側(daily-screening.yml)が
+メール送信後にこのファイルをcommit & pushする。
 
 Python標準ライブラリだけで動く(追加インストール不要)。
 """
@@ -22,12 +27,30 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 SCREEN_URL = os.environ.get("SCREEN_URL", "https://jquants-backend.onrender.com/api/screen")
 JST = timezone(timedelta(hours=9))
 # 判定済みの銘柄がこの割合を下回るときは「サーバー再起動直後で判定が途中」と注意書きを出す
 COVERAGE_WARNING_RATIO = 0.9
 SITE_URL = "https://sprightly-youtiao-91ad2f.netlify.app/"
+LAST_MATCHES_PATH = Path(__file__).resolve().parent.parent / "data" / "last_matches.json"
+
+
+def load_previous_codes(path=LAST_MATCHES_PATH):
+    """前回実行時の該当銘柄コード一覧を読む。ファイルが無い/壊れている場合はNone(差分比較しない)"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        codes = data.get("codes")
+        return set(codes) if isinstance(codes, list) else None
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+
+def save_current_codes(codes, path=LAST_MATCHES_PATH):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"date": datetime.now(JST).strftime("%Y-%m-%d"), "codes": sorted(codes)}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def fetch_screening():
@@ -54,10 +77,11 @@ def fmt(value, suffix="", digits=None):
     return f"{value:,}{suffix}" if isinstance(value, int) else f"{value}{suffix}"
 
 
-def build_mail(result):
+def build_mail(result, previous_codes=None):
     today = datetime.now(JST)
     date_label = f"{today.month}/{today.day}"
     matches = result.get("matches", [])
+    near_misses = result.get("nearMisses", [])
     coverage = result.get("coverage", {})
     screened = coverage.get("screened") or 0
     total = coverage.get("totalListed") or 0
@@ -67,6 +91,15 @@ def build_mail(result):
         subject = f"【高配当ボード】{date_label} 条件を満たす銘柄: {len(matches)}件"
     else:
         subject = f"【高配当ボード】{date_label} 該当銘柄なし"
+
+    # 前回実行時との差分(新規に該当/該当から外れた銘柄)。前回ファイルが無い初回はNoneで比較しない
+    by_code = {m["code"]: m for m in matches}
+    newly_added = []
+    dropped = []
+    if previous_codes is not None:
+        current_codes = set(by_code.keys())
+        newly_added = [by_code[c2] for c2 in by_code if c2 not in previous_codes]
+        dropped = sorted(previous_codes - current_codes)
 
     notes = []
     if total and screened < total * COVERAGE_WARNING_RATIO:
@@ -88,6 +121,13 @@ def build_mail(result):
     # --- テキスト版 ---
     text = [subject, ""]
     text += notes
+    if newly_added:
+        added_labels = [f"{m['code']} {m['name']}" for m in newly_added]
+        text.append(f"🆕 新規に該当: {', '.join(added_labels)}")
+    if dropped:
+        text.append(f"➖ 該当から外れた: {', '.join(dropped)}")
+    if newly_added or dropped:
+        text.append("")
     if matches:
         for m in matches:
             mark = "◎ " if m.get("goodPbr") else ""
@@ -105,6 +145,12 @@ def build_mail(result):
             text.append("")
     else:
         text.append("今日は全条件を満たす銘柄はありませんでした。")
+        text.append("")
+    if near_misses:
+        text.append(f"■ 惜しい銘柄(あと1条件): {len(near_misses)}件")
+        for m in near_misses:
+            missed = m.get("missedCheck") or {}
+            text.append(f"{m['code']} {m['name']}({m.get('industry', '')}) — 届かず: {missed.get('label', '?')}")
         text.append("")
     text.append("■ 判定条件")
     text += [f"・{line}" for line in criteria_lines]
@@ -147,12 +193,30 @@ def build_mail(result):
         else "<p>今日は全条件を満たす銘柄はありませんでした。</p>"
     )
     notes_html = "".join(f"<p style='color:#b45309'>⚠️ {esc(n)}</p>" for n in notes)
+    diff_html = ""
+    if newly_added:
+        added_html = ", ".join(f"<b>{esc(m['code'])} {esc(m['name'])}</b>" for m in newly_added)
+        diff_html += f"<p>🆕 新規に該当: {added_html}</p>"
+    if dropped:
+        diff_html += f"<p>➖ 該当から外れた: {esc(', '.join(dropped))}</p>"
+    near_miss_html = ""
+    if near_misses:
+        nm_rows = "".join(
+            f"<li><b>{esc(m['code'])} {esc(m['name'])}</b>"
+            f"<span style='color:#888'>({esc(m.get('industry', ''))})</span> — "
+            f"届かず: {esc((m.get('missedCheck') or {}).get('label', '?'))}</li>"
+            for m in near_misses
+        )
+        near_miss_html = (
+            f"<h3 style='font-size:14px;margin-top:24px'>惜しい銘柄(あと1条件): {len(near_misses)}件</h3>"
+            f"<ul style='font-size:13px'>{nm_rows}</ul>"
+        )
     criteria_html = "".join(f"<li>{esc(line)}</li>" for line in criteria_lines)
     criteria_html += "".join(f"<li>判定していない条件: {esc(n)}</li>" for n in not_checked)
     body_html = (
         "<div style='font-family:sans-serif;color:#222;max-width:760px'>"
         f"<h2 style='font-size:18px'>{esc(subject)}</h2>"
-        f"{notes_html}{table}"
+        f"{notes_html}{diff_html}{table}{near_miss_html}"
         f"<h3 style='font-size:14px;margin-top:24px'>判定条件</h3><ul style='font-size:13px'>{criteria_html}"
         f"<li>判定済み銘柄数: {screened:,} / {total:,}</li></ul>"
         f"<p style='font-size:13px'><a href='{SITE_URL}'>日本株高配当ボードを開く</a></p>"
@@ -182,13 +246,17 @@ def send(subject, text, body_html):
 
 def main():
     result = fetch_screening()
-    subject, text, body_html = build_mail(result)
+    previous_codes = load_previous_codes()
+    subject, text, body_html = build_mail(result, previous_codes)
     if os.environ.get("DRY_RUN") == "1":
         with open("mail_preview.html", "w", encoding="utf-8") as f:
             f.write(body_html)
         print(text)
         return
     send(subject, text, body_html)
+    # 次回実行時との差分表示に使うため、今回の該当銘柄を保存する
+    # (ワークフロー側がこのファイルをcommit & pushする)
+    save_current_codes([m["code"] for m in result.get("matches", [])])
 
 
 if __name__ == "__main__":

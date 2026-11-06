@@ -115,8 +115,35 @@ export function evaluateStock({ stock, epsHistory }, industryPer, { currentRatio
   };
 }
 
+/** evaluateStockの結果(1銘柄分)をメール/API向けの表示用オブジェクトに変換する */
+function toResultShape(record, result) {
+  const s = record.stock;
+  return {
+    code: s.code,
+    name: s.name,
+    industry: s.industry,
+    price: s.price,
+    priceDate: s.priceDate,
+    yieldPct: s.yieldPct,
+    dividendFreq: s.dividendFreq,
+    eps: s.eps,
+    epsFrom: result.checks.find((c) => c.key === 'eps').value?.from ?? null,
+    per: result.per,
+    industryPer: result.industryPer,
+    pbr: result.pbr,
+    goodPbr: result.goodPbr,
+    roe: s.roe,
+    roa: s.roa,
+    roic: s.roic,
+    currentRatio: s.currentRatio,
+    payoutRatio: s.payoutRatio,
+  };
+}
+
 /**
  * キャッシュ済みの全銘柄を判定し、全条件を満たした銘柄を利回りの高い順に返す。
+ * あと1条件だけ満たせなかった銘柄も「惜しい銘柄」として別途返す(条件が厳しく0件になりやすいため、
+ * どこまで近づいているかの参考情報として)。
  * records: Map<code, { stock, epsHistory }>
  */
 export function runScreening(records, { totalListed = null } = {}) {
@@ -132,38 +159,28 @@ export function runScreening(records, { totalListed = null } = {}) {
     list.length > 0 && withCurrentRatio / list.length >= CRITERIA.currentRatioCoverageThreshold;
 
   const matches = [];
+  const nearMisses = [];
   const stepCounts = { yield: 0, eps: 0, per: 0, roe: 0, roa: 0, roic: 0, currentRatio: 0, payout: 0 };
   for (const record of list) {
     const result = evaluateStock(record, industryPers.get(record.stock.industry) ?? null, {
       currentRatioAvailable,
     });
     for (const c of result.checks) if (c.ok) stepCounts[c.key] += 1;
+
     if (result.passed) {
-      const s = record.stock;
-      matches.push({
-        code: s.code,
-        name: s.name,
-        industry: s.industry,
-        price: s.price,
-        priceDate: s.priceDate,
-        yieldPct: s.yieldPct,
-        dividendFreq: s.dividendFreq,
-        eps: s.eps,
-        epsFrom: result.checks.find((c) => c.key === 'eps').value?.from ?? null,
-        per: result.per,
-        industryPer: result.industryPer,
-        pbr: result.pbr,
-        goodPbr: result.goodPbr,
-        roe: s.roe,
-        roa: s.roa,
-        roic: s.roic,
-        currentRatio: s.currentRatio,
-        payoutRatio: s.payoutRatio,
-      });
+      matches.push(toResultShape(record, result));
+      continue;
+    }
+
+    const failedChecks = result.checks.filter((c) => !c.ok);
+    // 他の条件はすべて満たしているが、1つだけ惜しく届かなかった銘柄
+    if (failedChecks.length === 1) {
+      nearMisses.push({ ...toResultShape(record, result), missedCheck: failedChecks[0] });
     }
   }
 
   matches.sort((a, b) => (b.yieldPct ?? 0) - (a.yieldPct ?? 0));
+  nearMisses.sort((a, b) => (b.yieldPct ?? 0) - (a.yieldPct ?? 0));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -173,5 +190,7 @@ export function runScreening(records, { totalListed = null } = {}) {
     // 各条件を単独で満たした銘柄数(条件が厳しすぎないかの目安)
     passCounts: stepCounts,
     matches,
+    // あと1条件だけ満たせなかった銘柄(利回り順、最大20件)
+    nearMisses: nearMisses.slice(0, 20),
   };
 }
