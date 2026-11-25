@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-24T10:21:37.458Z",
+  "generatedAt": "2026-11-25T08:50:07.999Z",
   "criteria": {
     "minYieldPct": 3.5,
     "maxPer": 15,
@@ -22,32 +22,32 @@
     "currentRatio": 0
   },
   "passCounts": {
-    "yield": 1005,
+    "yield": 1003,
     "eps": 2437,
-    "per": 2537,
+    "per": 2550,
     "roe": 966,
     "roa": 388,
-    "roic": 1225,
+    "roic": 1224,
     "currentRatio": 4449,
-    "payout": 1993
+    "payout": 1992
   },
   "matches": [
     {
       "code": "6176",
       "name": "ブランジスタ",
       "industry": "サービス業",
-      "price": 737,
-      "priceDate": "2026-11-24",
-      "yieldPct": 8.82,
+      "price": 721,
+      "priceDate": "2026-11-25",
+      "yieldPct": 9.02,
       "dividendFreq": 2,
       "eps": 181.63,
       "epsFrom": {
         "year": 2022,
         "eps": 12.83
       },
-      "per": 4.1,
-      "industryPer": 39.8,
-      "pbr": 1.6,
+      "per": 4,
+      "industryPer": 40.2,
+      "pbr": 1.57,
       "goodPbr": false,
       "roe": 22.3,
       "roa": 16.2,
@@ -59,9 +59,9 @@
       "code": "5729",
       "name": "日本精鉱",
       "industry": "非鉄金属",
-      "price": 1347,
-      "priceDate": "2026-11-24",
-      "yieldPct": 7.42,
+      "price": 1321,
+      "priceDate": "2026-11-25",
+      "yieldPct": 7.57,
       "dividendFreq": 2,
       "eps": 430.14,
       "epsFrom": {
@@ -69,8 +69,8 @@
         "eps": 157.86
       },
       "per": 3.1,
-      "industryPer": 16,
-      "pbr": 0.85,
+      "industryPer": 14.2,
+      "pbr": 0.84,
       "goodPbr": true,
       "roe": 17.7,
       "roa": 10.6,
@@ -79,12 +79,35 @@
       "payoutRatio": 23.2
     },
     {
+      "code": "3640",
+      "name": "電算",
+      "industry": "情報･通信業",
+      "price": 2341,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.98,
+      "dividendFreq": 2,
+      "eps": 794.09,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 171.75
+      },
+      "per": 2.9,
+      "industryPer": 16.5,
+      "pbr": 0.8,
+      "goodPbr": true,
+      "roe": 16.9,
+      "roa": 10.2,
+      "roic": 16.4,
+      "currentRatio": null,
+      "payoutRatio": 17.6
+    },
+    {
       "code": "7095",
       "name": "Ｍａｃｂｅｅ　Ｐｌａｎｅｔ",
       "industry": "サービス業",
-      "price": 927,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.93,
+      "price": 930,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.91,
       "dividendFreq": 1,
       "eps": 169.49,
       "epsFrom": {
@@ -92,7 +115,7 @@
         "eps": 58.94
       },
       "per": 5.5,
-      "industryPer": 39.8,
+      "industryPer": 40.2,
       "pbr": 0.92,
       "goodPbr": true,
       "roe": 22.6,
@@ -102,50 +125,27 @@
       "payoutRatio": 32.5
     },
     {
-      "code": "3640",
-      "name": "電算",
-      "industry": "情報･通信業",
-      "price": 2363,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.92,
-      "dividendFreq": 2,
-      "eps": 794.09,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 171.75
-      },
-      "per": 3,
-      "industryPer": 16.4,
-      "pbr": 0.81,
-      "goodPbr": true,
-      "roe": 16.9,
-      "roa": 10.2,
-      "roic": 16.4,
-      "currentRatio": null,
-      "payoutRatio": 17.6
-    },
-    {
-      "code": "5285",
-      "name": "ヤマックス",
-      "industry": "ガラス･土石製品",
-      "price": 1145,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.76,
+      "code": "6561",
+      "name": "ＨＡＮＡＴＯＵＲ　ＪＡＰＡＮ",
+      "industry": "サービス業",
+      "price": 711,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.63,
       "dividendFreq": 1,
-      "eps": 213.65,
+      "eps": 110.32,
       "epsFrom": {
-        "year": 2022,
-        "eps": 37.95
+        "year": 2021,
+        "eps": -178.33
       },
-      "per": 5.4,
-      "industryPer": 17.6,
-      "pbr": 1.09,
+      "per": 6.4,
+      "industryPer": 40.2,
+      "pbr": 1.99,
       "goodPbr": false,
-      "roe": 20.6,
-      "roa": 10.1,
-      "roic": 20.2,
+      "roe": 47.9,
+      "roa": 13.4,
+      "roic": 32.3,
       "currentRatio": null,
-      "payoutRatio": 30.9
+      "payoutRatio": 36.3
     },
     {
       "code": "1384",
@@ -171,44 +171,44 @@
       "payoutRatio": 28.5
     },
     {
-      "code": "6561",
-      "name": "ＨＡＮＡＴＯＵＲ　ＪＡＰＡＮ",
-      "industry": "サービス業",
-      "price": 716,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.59,
+      "code": "5285",
+      "name": "ヤマックス",
+      "industry": "ガラス･土石製品",
+      "price": 1190,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.55,
       "dividendFreq": 1,
-      "eps": 110.32,
+      "eps": 213.65,
       "epsFrom": {
-        "year": 2021,
-        "eps": -178.33
+        "year": 2022,
+        "eps": 37.95
       },
-      "per": 6.5,
-      "industryPer": 39.8,
-      "pbr": 2,
+      "per": 5.6,
+      "industryPer": 17,
+      "pbr": 1.14,
       "goodPbr": false,
-      "roe": 47.9,
-      "roa": 13.4,
-      "roic": 32.3,
+      "roe": 20.6,
+      "roa": 10.1,
+      "roic": 20.2,
       "currentRatio": null,
-      "payoutRatio": 36.3
+      "payoutRatio": 30.9
     },
     {
       "code": "5445",
       "name": "東京鐵鋼",
       "industry": "鉄鋼",
-      "price": 1839,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.44,
+      "price": 1859,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.38,
       "dividendFreq": 2,
       "eps": 315.59,
       "epsFrom": {
         "year": 2022,
         "eps": -172.69
       },
-      "per": 5.8,
-      "industryPer": 50.5,
-      "pbr": 0.73,
+      "per": 5.9,
+      "industryPer": 51.2,
+      "pbr": 0.74,
       "goodPbr": true,
       "roe": 15.1,
       "roa": 11.2,
@@ -217,35 +217,12 @@
       "payoutRatio": 31.7
     },
     {
-      "code": "8789",
-      "name": "フィンテック　グローバル",
-      "industry": "その他金融業",
-      "price": 104,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.81,
-      "dividendFreq": 1,
-      "eps": 23.3,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 0.88
-      },
-      "per": 4.5,
-      "industryPer": 14.3,
-      "pbr": 1.37,
-      "goodPbr": false,
-      "roe": 22.4,
-      "roa": 10.8,
-      "roic": 18.8,
-      "currentRatio": null,
-      "payoutRatio": 21.5
-    },
-    {
       "code": "7373",
       "name": "アイドマ・ホールディングス",
       "industry": "サービス業",
-      "price": 650,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.62,
+      "price": 646,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.64,
       "dividendFreq": 1,
       "eps": 104.74,
       "epsFrom": {
@@ -253,7 +230,7 @@
         "eps": 68.4
       },
       "per": 6.2,
-      "industryPer": 39.8,
+      "industryPer": 40.2,
       "pbr": 1.19,
       "goodPbr": false,
       "roe": 22.4,
@@ -263,11 +240,34 @@
       "payoutRatio": 28.6
     },
     {
+      "code": "8789",
+      "name": "フィンテック　グローバル",
+      "industry": "その他金融業",
+      "price": 108,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.63,
+      "dividendFreq": 1,
+      "eps": 23.3,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 0.88
+      },
+      "per": 4.6,
+      "industryPer": 14.5,
+      "pbr": 1.43,
+      "goodPbr": false,
+      "roe": 22.4,
+      "roa": 10.8,
+      "roic": 18.8,
+      "currentRatio": null,
+      "payoutRatio": 21.5
+    },
+    {
       "code": "7187",
       "name": "ジェイリース",
       "industry": "その他金融業",
-      "price": 1221,
-      "priceDate": "2026-11-24",
+      "price": 1222,
+      "priceDate": "2026-11-25",
       "yieldPct": 4.5,
       "dividendFreq": 2,
       "eps": 137.93,
@@ -276,7 +276,7 @@
         "eps": 75.47
       },
       "per": 8.9,
-      "industryPer": 14.3,
+      "industryPer": 14.5,
       "pbr": 2.95,
       "goodPbr": false,
       "roe": 35.8,
@@ -289,18 +289,18 @@
       "code": "6430",
       "name": "ダイコク電機",
       "industry": "機械",
-      "price": 2250,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.44,
+      "price": 2298,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.35,
       "dividendFreq": 2,
       "eps": 395.6,
       "epsFrom": {
         "year": 2022,
         "eps": 83.13
       },
-      "per": 5.7,
-      "industryPer": 25.3,
-      "pbr": 0.66,
+      "per": 5.8,
+      "industryPer": 24,
+      "pbr": 0.67,
       "goodPbr": true,
       "roe": 16.4,
       "roa": 12.5,
@@ -309,20 +309,43 @@
       "payoutRatio": 25.3
     },
     {
+      "code": "6033",
+      "name": "エクストリーム",
+      "industry": "サービス業",
+      "price": 1494,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.15,
+      "dividendFreq": 1,
+      "eps": 220,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 82.61
+      },
+      "per": 6.8,
+      "industryPer": 40.2,
+      "pbr": 1.16,
+      "goodPbr": false,
+      "roe": 18.7,
+      "roa": 12.6,
+      "roic": 14.7,
+      "currentRatio": null,
+      "payoutRatio": 28.2
+    },
+    {
       "code": "7849",
       "name": "スターツ出版",
       "industry": "情報･通信業",
-      "price": 2878,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.17,
+      "price": 2889,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.15,
       "dividendFreq": 2,
       "eps": 358.7,
       "epsFrom": {
         "year": 2021,
         "eps": 147.53
       },
-      "per": 8,
-      "industryPer": 16.4,
+      "per": 8.1,
+      "industryPer": 16.5,
       "pbr": 1.03,
       "goodPbr": false,
       "roe": 17.7,
@@ -330,29 +353,6 @@
       "roic": 15.9,
       "currentRatio": null,
       "payoutRatio": 33.5
-    },
-    {
-      "code": "6417",
-      "name": "ＳＡＮＫＹＯ",
-      "industry": "機械",
-      "price": 2168,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.15,
-      "dividendFreq": 2,
-      "eps": 227.65,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 61.01
-      },
-      "per": 9.5,
-      "industryPer": 25.3,
-      "pbr": 1.72,
-      "goodPbr": false,
-      "roe": 18.3,
-      "roa": 16.9,
-      "roic": 18.6,
-      "currentRatio": null,
-      "payoutRatio": 39.5
     },
     {
       "code": "2173",
@@ -368,7 +368,7 @@
         "eps": 48.62
       },
       "per": 5.9,
-      "industryPer": 39.8,
+      "industryPer": 40.2,
       "pbr": 2.28,
       "goodPbr": false,
       "roe": 31.4,
@@ -378,44 +378,44 @@
       "payoutRatio": 24.5
     },
     {
-      "code": "6033",
-      "name": "エクストリーム",
-      "industry": "サービス業",
-      "price": 1509,
-      "priceDate": "2026-11-24",
-      "yieldPct": 4.11,
-      "dividendFreq": 1,
-      "eps": 220,
+      "code": "6417",
+      "name": "ＳＡＮＫＹＯ",
+      "industry": "機械",
+      "price": 2209.5,
+      "priceDate": "2026-11-25",
+      "yieldPct": 4.07,
+      "dividendFreq": 2,
+      "eps": 227.65,
       "epsFrom": {
         "year": 2022,
-        "eps": 82.61
+        "eps": 61.01
       },
-      "per": 6.9,
-      "industryPer": 39.8,
-      "pbr": 1.17,
+      "per": 9.7,
+      "industryPer": 24,
+      "pbr": 1.75,
       "goodPbr": false,
-      "roe": 18.7,
-      "roa": 12.6,
-      "roic": 14.7,
+      "roe": 18.3,
+      "roa": 16.9,
+      "roic": 18.6,
       "currentRatio": null,
-      "payoutRatio": 28.2
+      "payoutRatio": 39.5
     },
     {
       "code": "5071",
       "name": "ヴィス",
       "industry": "サービス業",
-      "price": 1261,
-      "priceDate": "2026-11-24",
-      "yieldPct": 3.89,
+      "price": 1268,
+      "priceDate": "2026-11-25",
+      "yieldPct": 3.86,
       "dividendFreq": 1,
       "eps": 163.39,
       "epsFrom": {
         "year": 2022,
         "eps": 84.09
       },
-      "per": 7.7,
-      "industryPer": 39.8,
-      "pbr": 1.34,
+      "per": 7.8,
+      "industryPer": 40.2,
+      "pbr": 1.35,
       "goodPbr": false,
       "roe": 18.1,
       "roa": 11.2,
@@ -427,24 +427,47 @@
       "code": "7079",
       "name": "ＷＤＢココ",
       "industry": "サービス業",
-      "price": 2490,
-      "priceDate": "2026-11-24",
-      "yieldPct": 3.82,
+      "price": 2465,
+      "priceDate": "2026-11-25",
+      "yieldPct": 3.85,
       "dividendFreq": 1,
       "eps": 282.47,
       "epsFrom": {
         "year": 2022,
         "eps": 273.94
       },
-      "per": 8.8,
-      "industryPer": 39.8,
-      "pbr": 1.25,
+      "per": 8.7,
+      "industryPer": 40.2,
+      "pbr": 1.24,
       "goodPbr": false,
       "roe": 19.8,
       "roa": 15.5,
       "roic": 20.1,
       "currentRatio": null,
       "payoutRatio": 33.6
+    },
+    {
+      "code": "156A",
+      "name": "マテリアルグループ",
+      "industry": "サービス業",
+      "price": 689,
+      "priceDate": "2026-11-24",
+      "yieldPct": 3.79,
+      "dividendFreq": 1,
+      "eps": 86.3,
+      "epsFrom": {
+        "year": 2024,
+        "eps": 73.1
+      },
+      "per": 8,
+      "industryPer": 40.2,
+      "pbr": 2.78,
+      "goodPbr": false,
+      "roe": 30.5,
+      "roa": 14.8,
+      "roic": 31,
+      "currentRatio": null,
+      "payoutRatio": 30.2
     },
     {
       "code": "1450",
@@ -470,12 +493,35 @@
       "payoutRatio": 31.9
     },
     {
+      "code": "6083",
+      "name": "ＥＲＩホールディングス",
+      "industry": "サービス業",
+      "price": 1140,
+      "priceDate": "2026-11-25",
+      "yieldPct": 3.68,
+      "dividendFreq": 2,
+      "eps": 139.41,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 52.28
+      },
+      "per": 8.2,
+      "industryPer": 40.2,
+      "pbr": 3.01,
+      "goodPbr": false,
+      "roe": 26.2,
+      "roa": 12.9,
+      "roic": 29,
+      "currentRatio": null,
+      "payoutRatio": 30.1
+    },
+    {
       "code": "7792",
       "name": "コラントッテ",
       "industry": "その他製品",
-      "price": 1364,
-      "priceDate": "2026-11-24",
-      "yieldPct": 3.67,
+      "price": 1370,
+      "priceDate": "2026-11-25",
+      "yieldPct": 3.65,
       "dividendFreq": 1,
       "eps": 166.1,
       "epsFrom": {
@@ -483,7 +529,7 @@
         "eps": 68.37
       },
       "per": 8.2,
-      "industryPer": 22.4,
+      "industryPer": 23,
       "pbr": 1.98,
       "goodPbr": false,
       "roe": 25,
@@ -506,7 +552,7 @@
         "eps": 51
       },
       "per": 9.5,
-      "industryPer": 16.4,
+      "industryPer": 16.5,
       "pbr": 2.15,
       "goodPbr": false,
       "roe": 23.5,
@@ -514,29 +560,6 @@
       "roic": 21.4,
       "currentRatio": null,
       "payoutRatio": 34.3
-    },
-    {
-      "code": "6083",
-      "name": "ＥＲＩホールディングス",
-      "industry": "サービス業",
-      "price": 1173,
-      "priceDate": "2026-11-24",
-      "yieldPct": 3.58,
-      "dividendFreq": 2,
-      "eps": 139.41,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 52.28
-      },
-      "per": 8.4,
-      "industryPer": 39.8,
-      "pbr": 3.1,
-      "goodPbr": false,
-      "roe": 26.2,
-      "roa": 12.9,
-      "roic": 29,
-      "currentRatio": null,
-      "payoutRatio": 30.1
     },
     {
       "code": "2924",
@@ -567,9 +590,9 @@
       "code": "8747",
       "name": "豊トラスティ証券",
       "industry": "証券･商品先物取引業",
-      "price": 1517,
-      "priceDate": "2026-11-24",
-      "yieldPct": 13.84,
+      "price": 1447,
+      "priceDate": "2026-11-25",
+      "yieldPct": 14.51,
       "dividendFreq": 1,
       "eps": 779.11,
       "epsFrom": {
@@ -577,8 +600,8 @@
         "eps": 177.77
       },
       "per": 1.9,
-      "industryPer": 10.8,
-      "pbr": 0.47,
+      "industryPer": 10.6,
+      "pbr": 0.45,
       "goodPbr": true,
       "roe": 16.6,
       "roa": 1.5,
@@ -606,7 +629,7 @@
         "eps": 53.25
       },
       "per": 5.1,
-      "industryPer": 15.1,
+      "industryPer": 15.5,
       "pbr": 0.95,
       "goodPbr": true,
       "roe": 16.9,
@@ -619,35 +642,6 @@
         "label": "ROA10%以上",
         "ok": false,
         "value": 5.9
-      }
-    },
-    {
-      "code": "7148",
-      "name": "ＦＰＧ",
-      "industry": "証券･商品先物取引業",
-      "price": 1312,
-      "priceDate": "2026-11-24",
-      "yieldPct": 7.72,
-      "dividendFreq": 2,
-      "eps": 202.51,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 99.24
-      },
-      "per": 6.5,
-      "industryPer": 10.8,
-      "pbr": 1.7,
-      "goodPbr": false,
-      "roe": 32,
-      "roa": 11.6,
-      "roic": 31.8,
-      "currentRatio": null,
-      "payoutRatio": 50,
-      "missedCheck": {
-        "key": "payout",
-        "label": "配当性向40%以下",
-        "ok": false,
-        "value": 50
       }
     },
     {
@@ -664,7 +658,7 @@
         "eps": 140.68
       },
       "per": 9.7,
-      "industryPer": 39.8,
+      "industryPer": 40.2,
       "pbr": 2.08,
       "goodPbr": false,
       "roe": 23,
@@ -677,6 +671,35 @@
         "label": "配当性向40%以下",
         "ok": false,
         "value": 74.4
+      }
+    },
+    {
+      "code": "7148",
+      "name": "ＦＰＧ",
+      "industry": "証券･商品先物取引業",
+      "price": 1330,
+      "priceDate": "2026-11-25",
+      "yieldPct": 7.61,
+      "dividendFreq": 2,
+      "eps": 202.51,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 99.24
+      },
+      "per": 6.6,
+      "industryPer": 10.6,
+      "pbr": 1.72,
+      "goodPbr": false,
+      "roe": 32,
+      "roa": 11.6,
+      "roic": 31.8,
+      "currentRatio": null,
+      "payoutRatio": 50,
+      "missedCheck": {
+        "key": "payout",
+        "label": "配当性向40%以下",
+        "ok": false,
+        "value": 50
       }
     },
     {
@@ -693,7 +716,7 @@
         "eps": 121.42
       },
       "per": 5.5,
-      "industryPer": 15.1,
+      "industryPer": 15.5,
       "pbr": 1.21,
       "goodPbr": false,
       "roe": 25.8,
@@ -712,9 +735,9 @@
       "code": "3489",
       "name": "フェイスネットワーク",
       "industry": "不動産業",
-      "price": 626,
-      "priceDate": "2026-11-24",
-      "yieldPct": 6.79,
+      "price": 635,
+      "priceDate": "2026-11-25",
+      "yieldPct": 6.69,
       "dividendFreq": 1,
       "eps": 120.99,
       "epsFrom": {
@@ -722,8 +745,8 @@
         "eps": 34.79
       },
       "per": 5.2,
-      "industryPer": 15.1,
-      "pbr": 1.5,
+      "industryPer": 15.5,
+      "pbr": 1.52,
       "goodPbr": false,
       "roe": 23.3,
       "roa": 7.7,
@@ -738,50 +761,21 @@
       }
     },
     {
-      "code": "7039",
-      "name": "ブリッジインターナショナルグループ",
-      "industry": "サービス業",
-      "price": 1303,
-      "priceDate": "2026-11-24",
-      "yieldPct": 6.52,
-      "dividendFreq": 2,
-      "eps": 149.24,
-      "epsFrom": {
-        "year": 2021,
-        "eps": 135.57
-      },
-      "per": 8.7,
-      "industryPer": 39.8,
-      "pbr": 1,
-      "goodPbr": true,
-      "roe": 14,
-      "roa": 11,
-      "roic": 14.5,
-      "currentRatio": null,
-      "payoutRatio": 57,
-      "missedCheck": {
-        "key": "payout",
-        "label": "配当性向40%以下",
-        "ok": false,
-        "value": 57
-      }
-    },
-    {
       "code": "7505",
       "name": "扶桑電通",
       "industry": "卸売業",
-      "price": 1557,
-      "priceDate": "2026-11-24",
-      "yieldPct": 6.49,
+      "price": 1536,
+      "priceDate": "2026-11-25",
+      "yieldPct": 6.58,
       "dividendFreq": 2,
       "eps": 252.35,
       "epsFrom": {
         "year": 2022,
         "eps": 28.15
       },
-      "per": 6.2,
-      "industryPer": 16.4,
-      "pbr": 0.94,
+      "per": 6.1,
+      "industryPer": 16.7,
+      "pbr": 0.92,
       "goodPbr": true,
       "roe": 14.3,
       "roa": 5.9,
@@ -793,6 +787,35 @@
         "label": "ROA10%以上",
         "ok": false,
         "value": 5.9
+      }
+    },
+    {
+      "code": "7039",
+      "name": "ブリッジインターナショナルグループ",
+      "industry": "サービス業",
+      "price": 1320,
+      "priceDate": "2026-11-25",
+      "yieldPct": 6.44,
+      "dividendFreq": 2,
+      "eps": 149.24,
+      "epsFrom": {
+        "year": 2021,
+        "eps": 135.57
+      },
+      "per": 8.8,
+      "industryPer": 40.2,
+      "pbr": 1.01,
+      "goodPbr": false,
+      "roe": 14,
+      "roa": 11,
+      "roic": 14.5,
+      "currentRatio": null,
+      "payoutRatio": 57,
+      "missedCheck": {
+        "key": "payout",
+        "label": "配当性向40%以下",
+        "ok": false,
+        "value": 57
       }
     },
     {
@@ -809,7 +832,7 @@
         "eps": 62.77
       },
       "per": 13.1,
-      "industryPer": 39.8,
+      "industryPer": 40.2,
       "pbr": 2.12,
       "goodPbr": false,
       "roe": 21.2,
@@ -838,7 +861,7 @@
         "eps": 121.93
       },
       "per": 5.1,
-      "industryPer": 16.4,
+      "industryPer": 16.7,
       "pbr": 0.63,
       "goodPbr": true,
       "roe": 16.2,
@@ -854,41 +877,12 @@
       }
     },
     {
-      "code": "9744",
-      "name": "メイテックグループホールディングス",
-      "industry": "サービス業",
-      "price": 3252,
-      "priceDate": "2026-11-24",
-      "yieldPct": 6.03,
-      "dividendFreq": 2,
-      "eps": 194.96,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 113.85
-      },
-      "per": 16.7,
-      "industryPer": 39.8,
-      "pbr": 5.15,
-      "goodPbr": false,
-      "roe": 27.5,
-      "roa": 14.7,
-      "roic": 27.2,
-      "currentRatio": null,
-      "payoutRatio": 100.5,
-      "missedCheck": {
-        "key": "payout",
-        "label": "配当性向40%以下",
-        "ok": false,
-        "value": 100.5
-      }
-    },
-    {
       "code": "3945",
       "name": "スーパーバッグ",
       "industry": "パルプ・紙",
-      "price": 1829,
-      "priceDate": "2026-11-24",
-      "yieldPct": 6.01,
+      "price": 1818,
+      "priceDate": "2026-11-25",
+      "yieldPct": 6.05,
       "dividendFreq": 1,
       "eps": 539.29,
       "epsFrom": {
@@ -896,7 +890,7 @@
         "eps": -420.51
       },
       "per": 3.4,
-      "industryPer": 16.3,
+      "industryPer": 16.7,
       "pbr": 0.49,
       "goodPbr": true,
       "roe": 18.5,
@@ -912,11 +906,40 @@
       }
     },
     {
+      "code": "9744",
+      "name": "メイテックグループホールディングス",
+      "industry": "サービス業",
+      "price": 3304,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.93,
+      "dividendFreq": 2,
+      "eps": 194.96,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 113.85
+      },
+      "per": 16.9,
+      "industryPer": 40.2,
+      "pbr": 5.23,
+      "goodPbr": false,
+      "roe": 27.5,
+      "roa": 14.7,
+      "roic": 27.2,
+      "currentRatio": null,
+      "payoutRatio": 100.5,
+      "missedCheck": {
+        "key": "payout",
+        "label": "配当性向40%以下",
+        "ok": false,
+        "value": 100.5
+      }
+    },
+    {
       "code": "8737",
       "name": "あかつき本社",
       "industry": "証券･商品先物取引業",
       "price": 515,
-      "priceDate": "2026-11-24",
+      "priceDate": "2026-11-25",
       "yieldPct": 5.83,
       "dividendFreq": 2,
       "eps": 133.89,
@@ -925,7 +948,7 @@
         "eps": 32.73
       },
       "per": 3.8,
-      "industryPer": 10.8,
+      "industryPer": 10.6,
       "pbr": 0.74,
       "goodPbr": true,
       "roe": 16.5,
@@ -941,50 +964,21 @@
       }
     },
     {
-      "code": "3925",
-      "name": "ダブルスタンダード",
-      "industry": "情報･通信業",
-      "price": 1223,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.72,
-      "dividendFreq": 1,
-      "eps": 81.95,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 79.74
-      },
-      "per": 14.9,
-      "industryPer": 16.4,
-      "pbr": 2.47,
-      "goodPbr": false,
-      "roe": 24.9,
-      "roa": 21.3,
-      "roic": 25.2,
-      "currentRatio": null,
-      "payoutRatio": 85.4,
-      "missedCheck": {
-        "key": "payout",
-        "label": "配当性向40%以下",
-        "ok": false,
-        "value": 85.4
-      }
-    },
-    {
       "code": "7374",
       "name": "コンフィデンス・インターワークス",
       "industry": "サービス業",
-      "price": 1312,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.72,
+      "price": 1323,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.67,
       "dividendFreq": 2,
       "eps": 128.51,
       "epsFrom": {
         "year": 2022,
         "eps": 118.19
       },
-      "per": 10.2,
-      "industryPer": 39.8,
-      "pbr": 1.31,
+      "per": 10.3,
+      "industryPer": 40.2,
+      "pbr": 1.32,
       "goodPbr": false,
       "roe": 14.8,
       "roa": 12,
@@ -999,12 +993,41 @@
       }
     },
     {
+      "code": "3925",
+      "name": "ダブルスタンダード",
+      "industry": "情報･通信業",
+      "price": 1240,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.65,
+      "dividendFreq": 1,
+      "eps": 81.95,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 79.74
+      },
+      "per": 15.1,
+      "industryPer": 16.5,
+      "pbr": 2.51,
+      "goodPbr": false,
+      "roe": 24.9,
+      "roa": 21.3,
+      "roic": 25.2,
+      "currentRatio": null,
+      "payoutRatio": 85.4,
+      "missedCheck": {
+        "key": "payout",
+        "label": "配当性向40%以下",
+        "ok": false,
+        "value": 85.4
+      }
+    },
+    {
       "code": "3452",
       "name": "ビーロット",
       "industry": "不動産業",
-      "price": 1290,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.66,
+      "price": 1303,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.6,
       "dividendFreq": 1,
       "eps": 236.04,
       "epsFrom": {
@@ -1012,8 +1035,8 @@
         "eps": 53.65
       },
       "per": 5.5,
-      "industryPer": 15.1,
-      "pbr": 1.2,
+      "industryPer": 15.5,
+      "pbr": 1.21,
       "goodPbr": false,
       "roe": 22.2,
       "roa": 5.7,
@@ -1028,79 +1051,21 @@
       }
     },
     {
-      "code": "6200",
-      "name": "インソース",
-      "industry": "サービス業",
-      "price": 628,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.57,
-      "dividendFreq": 1,
-      "eps": 52.36,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 26.53
-      },
-      "per": 12,
-      "industryPer": 39.8,
-      "pbr": 3.99,
-      "goodPbr": false,
-      "roe": 33.4,
-      "roa": 26,
-      "roic": 34,
-      "currentRatio": null,
-      "payoutRatio": 66.8,
-      "missedCheck": {
-        "key": "payout",
-        "label": "配当性向40%以下",
-        "ok": false,
-        "value": 66.8
-      }
-    },
-    {
-      "code": "5284",
-      "name": "ヤマウホールディングス",
-      "industry": "ガラス･土石製品",
-      "price": 1988,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.53,
-      "dividendFreq": 1,
-      "eps": 363.6,
-      "epsFrom": {
-        "year": 2022,
-        "eps": 249.53
-      },
-      "per": 5.5,
-      "industryPer": 17.6,
-      "pbr": 0.87,
-      "goodPbr": true,
-      "roe": 17.3,
-      "roa": 9.1,
-      "roic": 18.4,
-      "currentRatio": null,
-      "payoutRatio": 30.3,
-      "missedCheck": {
-        "key": "roa",
-        "label": "ROA10%以上",
-        "ok": false,
-        "value": 9.1
-      }
-    },
-    {
       "code": "6554",
       "name": "エスユーエス",
       "industry": "サービス業",
-      "price": 1130,
-      "priceDate": "2026-11-24",
-      "yieldPct": 5.49,
+      "price": 1114,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.57,
       "dividendFreq": 1,
       "eps": 136.04,
       "epsFrom": {
         "year": 2022,
         "eps": 35.77
       },
-      "per": 8.3,
-      "industryPer": 39.8,
-      "pbr": 2.01,
+      "per": 8.2,
+      "industryPer": 40.2,
+      "pbr": 1.98,
       "goodPbr": false,
       "roe": 20.9,
       "roa": 13.4,
@@ -1115,11 +1080,69 @@
       }
     },
     {
+      "code": "5284",
+      "name": "ヤマウホールディングス",
+      "industry": "ガラス･土石製品",
+      "price": 1996,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.51,
+      "dividendFreq": 1,
+      "eps": 363.6,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 249.53
+      },
+      "per": 5.5,
+      "industryPer": 17,
+      "pbr": 0.88,
+      "goodPbr": true,
+      "roe": 17.3,
+      "roa": 9.1,
+      "roic": 18.4,
+      "currentRatio": null,
+      "payoutRatio": 30.3,
+      "missedCheck": {
+        "key": "roa",
+        "label": "ROA10%以上",
+        "ok": false,
+        "value": 9.1
+      }
+    },
+    {
+      "code": "6200",
+      "name": "インソース",
+      "industry": "サービス業",
+      "price": 638,
+      "priceDate": "2026-11-25",
+      "yieldPct": 5.49,
+      "dividendFreq": 1,
+      "eps": 52.36,
+      "epsFrom": {
+        "year": 2022,
+        "eps": 26.53
+      },
+      "per": 12.2,
+      "industryPer": 40.2,
+      "pbr": 4.05,
+      "goodPbr": false,
+      "roe": 33.4,
+      "roa": 26,
+      "roic": 34,
+      "currentRatio": null,
+      "payoutRatio": 66.8,
+      "missedCheck": {
+        "key": "payout",
+        "label": "配当性向40%以下",
+        "ok": false,
+        "value": 66.8
+      }
+    },
+    {
       "code": "7120",
       "name": "ＳＨＩＮＫＯ",
       "industry": "卸売業",
       "price": 786,
-      "priceDate": "2026-11-24",
+      "priceDate": "2026-11-25",
       "yieldPct": 5.47,
       "dividendFreq": 1,
       "eps": 143.53,
@@ -1128,7 +1151,7 @@
         "eps": 93.51
       },
       "per": 5.5,
-      "industryPer": 16.4,
+      "industryPer": 16.7,
       "pbr": 1.63,
       "goodPbr": false,
       "roe": 25.9,
